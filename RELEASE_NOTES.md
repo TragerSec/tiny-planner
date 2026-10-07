@@ -1,13 +1,7 @@
-# Tiny Planner 1.0.0
+# Tiny Planner 1.0.1
 
-Tiny Planner brings tasks, projects and expenses into one local Obsidian workspace. All data stays in Markdown notes in your vault, without Dataview or TaskNotes.
+Fixes workspace layout preservation during plugin unload and updates. Tiny Planner no longer detaches its planner leaves, allowing Obsidian to restore them in their existing positions. View cleanup and registered event/interval cleanup remain in their normal lifecycle handlers.
 
-- Today, Inbox, Upcoming, Day/Week/Month Calendar and Boards.
-- Recurring tasks, selected work days, independent deadlines, estimates and actual minutes.
-- Current-calendar work statistics and spending history, with every currency shown separately.
-- Payments, subscriptions and optional project/area budgets.
-- English/Russian interfaces, built-in Guide, theme accents, collapsible navigation and Undo.
+To install or update manually, copy `main.js`, `manifest.json` and `styles.css` from this release into your vault's `.obsidian/plugins/tiny-planner/` directory, then reload Obsidian. Replace the three files together. Planner notes remain in the vault.
 
-For manual installation, download `main.js`, `manifest.json` and `styles.css` from this release and put them in your vault's `.obsidian/plugins/tiny-planner/` directory. Reload Obsidian and enable Tiny Planner under Community plugins.
-
-Requires Obsidian 1.7.2 or newer. See README for usage and privacy details.
+Requires Obsidian 1.7.2 or newer.

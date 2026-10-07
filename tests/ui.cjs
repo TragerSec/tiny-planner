@@ -1554,7 +1554,11 @@ const theme = require('./browser-theme.cjs');
         await page.locator('[data-tab=manualTab]').click();
         assert.match(await page.locator('.tp-manual').textContent(), /Сфера → проект → задача/);
         assert.match(await page.locator('.tp-manual').textContent(), /Автор: TragerSec/);
-        assert.match(await page.locator('.tp-manual').textContent(), /Версия: 1.0.0/);
+        assert.ok(
+          (await page.locator('.tp-manual').textContent()).includes(
+            'Версия: ' + require(path.join(root, 'manifest.json')).version,
+          ),
+        );
         assert.equal(await page.locator('.tp-quick').isVisible(), false);
         assert.equal(await page.locator('.tp-filters').isVisible(), false);
         await capture('manual-desktop.png');

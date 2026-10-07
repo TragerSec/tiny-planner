@@ -102,9 +102,6 @@ export default class TinyPlanner extends Plugin {
     }
     this.commandsRegistered = true;
   }
-  onunload(): void {
-    this.app.workspace.detachLeavesOfType(VIEW_TYPE);
-  }
   error(e: unknown): void {
     console.error('[Tiny Planner]', e);
     new Notice(messageText(e instanceof Error ? e.message : String(e), this.settings.language));

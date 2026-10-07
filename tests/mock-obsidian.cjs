@@ -20,7 +20,7 @@ class TFolder {
 class Events {
   refs = [];
   on(name, fn) {
-    const ref = { name, fn };
+    const ref = { name, fn, owner: this };
     this.refs.push(ref);
     return ref;
   }

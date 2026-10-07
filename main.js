@@ -9249,9 +9249,6 @@ var TinyPlanner = class extends import_obsidian6.Plugin {
     }
     this.commandsRegistered = true;
   }
-  onunload() {
-    this.app.workspace.detachLeavesOfType(VIEW_TYPE);
-  }
   error(e) {
     console.error("[Tiny Planner]", e);
     new import_obsidian6.Notice(messageText(e instanceof Error ? e.message : String(e), this.settings.language));

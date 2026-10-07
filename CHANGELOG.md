@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+
+- Keep planner leaves in their workspace positions during plugin unload and updates by letting Obsidian manage their lifecycle.
+
 ## 1.0.0 — Initial release
 
 - Local Markdown tasks, areas and projects, with Today, Inbox, Upcoming, Calendar and Boards.
