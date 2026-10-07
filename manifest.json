@@ -1,0 +1,9 @@
+{
+  "id": "tiny-planner",
+  "name": "Tiny Planner",
+  "version": "1.0.0",
+  "minAppVersion": "1.7.2",
+  "description": "Plan tasks, recurring work and expenses by area and project. Review your calendar, workload and statistics with all data stored in Markdown notes.",
+  "author": "TragerSec",
+  "isDesktopOnly": false
+}

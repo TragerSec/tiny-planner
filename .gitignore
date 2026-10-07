@@ -1,0 +1,20 @@
+node_modules/
+.test-build/
+dist/
+*.log
+.DS_Store
+.obsidian/
+data.json
+.perf-work/
+
+# Generated verification artifacts; curated README images remain tracked.
+docs/screenshots/
+docs/*-current.txt
+docs/*-current.json
+docs/browser-assets.json
+docs/preview-results.json
+docs/ui-test-results.txt
+
+# Archive integrity snapshots are generated, not development inputs.
+SHA256SUMS.txt
+SOURCE_SHA256SUMS.txt

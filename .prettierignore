@@ -1,0 +1,10 @@
+# Preserve vendored code and verbatim license notices.
+vendor/
+THIRD_PARTY_NOTICES.md
+# Generated output and npm-owned lockfile formatting.
+main.js
+package-lock.json
+dist/
+.test-build/
+.perf-work/
+docs/screenshots/
