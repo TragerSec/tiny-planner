@@ -56,6 +56,7 @@ export function iconButton(
   cls = '',
 ): HTMLButtonElement {
   const b = button(parent, '', action, cls);
+  b.classList.add('tp-icon-button');
   setIcon(b, icon);
   b.title = label;
   b.setAttribute('aria-label', label);
@@ -312,7 +313,7 @@ function attachCalendar(wrapper: HTMLElement, input: HTMLInputElement, language:
   trigger.setAttribute('aria-haspopup', 'dialog');
   trigger.setAttribute('aria-expanded', 'false');
   popup.addEventListener('toggle', (e) => {
-    if ((e as ToggleEvent).newState === 'closed') {
+    if (e.newState === 'closed') {
       popup.dataset.open = 'false';
       trigger.setAttribute('aria-expanded', 'false');
     }
@@ -406,7 +407,7 @@ function attachClock(wrapper: HTMLElement, input: HTMLInputElement, language: st
   trigger.setAttribute('aria-haspopup', 'dialog');
   trigger.setAttribute('aria-expanded', 'false');
   popup.addEventListener('toggle', (e) => {
-    if ((e as ToggleEvent).newState === 'closed') {
+    if (e.newState === 'closed') {
       popup.replaceChildren();
       popup.dataset.open = 'false';
       trigger.setAttribute('aria-expanded', 'false');

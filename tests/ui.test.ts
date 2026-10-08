@@ -440,7 +440,7 @@ test('UI deleted selected project resets filter and keeps tasks in Inbox', async
   try {
     const p = await f.plugin.service.createNote('project', 'To delete', {});
     await f.plugin.service.createTask(draft({ project: p.path }));
-    const filters = f.root.querySelectorAll<HTMLSelectElement>('.tp-filters select');
+    const filters = f.root.querySelectorAll<HTMLSelectElement>('.tp-filter-panel select');
     change(filters[1]!, p.path);
     await f.plugin.service.trash(p.path);
     assert.equal(f.root.querySelectorAll('.tp-task').length, 1);
@@ -744,10 +744,10 @@ test('UI task/project/area filters give consistent dashboard totals including em
     await f.plugin.service.createTask(draft({ project: p.path }));
     await f.plugin.service.createTask(draft({ title: 'Inbox' }));
     click(f.root.querySelector('[data-tab=statistics]'));
-    change(f.root.querySelector<HTMLSelectElement>('.tp-filters select')!, a.path);
+    change(f.root.querySelector<HTMLSelectElement>('.tp-filter-panel select')!, a.path);
     assert.equal(f.root.querySelector('[data-metric=tasks] strong')?.textContent, '1');
     assert.equal(f.root.querySelector('[data-metric=projects] strong')?.textContent, '2');
-    change(f.root.querySelectorAll<HTMLSelectElement>('.tp-filters select')[1]!, p.path);
+    change(f.root.querySelectorAll<HTMLSelectElement>('.tp-filter-panel select')[1]!, p.path);
     assert.equal(f.root.querySelector('[data-metric=projects] strong')?.textContent, '1');
     assert.equal(f.root.querySelector('.tp-project-stats tbody td')?.textContent, '1');
   } finally {
@@ -867,6 +867,20 @@ test('UI board pagination bounds cards without creating any vault notes', async 
     assert.equal(f.root.querySelector('.tp-board-pager small')?.textContent, '2 / 9');
     f.plugin.repo.snapshot = original;
     assert.equal(f.app.vault.getMarkdownFiles().length, 0);
+  } finally {
+    await f.close();
+  }
+});
+
+test('declarative settings remain searchable alongside the legacy settings tab', async () => {
+  const f = await fixture();
+  try {
+    const tab = (f.plugin as any).settingTabs[0];
+    const names = tab.getSettingDefinitions().map((definition: { name: string }) => definition.name);
+    const w = words(f.plugin.settings.language);
+    assert.deepEqual(names, [w.folder, w.language, w.dateFormat, w.capacity, w.uiScale, w.import]);
+    tab.display(); // Retain compatibility with Obsidian versions older than 1.13.
+    assert.equal(tab.containerEl.querySelectorAll('select').length >= 2, true);
   } finally {
     await f.close();
   }
@@ -1694,7 +1708,7 @@ test('UI financial filters isolate department spending and currencies', async ()
     click(f.root.querySelector('[data-stats-mode=finance]'));
     assert.match(f.root.querySelector('.tp-finance-metrics')!.textContent!, /50,00 USD/);
     assert.match(f.root.querySelector('.tp-finance-metrics')!.textContent!, /40,00 EUR/);
-    change(f.root.querySelector<HTMLSelectElement>('.tp-filters select')!, area.path);
+    change(f.root.querySelector<HTMLSelectElement>('.tp-filter-panel select')!, area.path);
     assert.equal(f.root.querySelector('.tp-finance-metrics')!.textContent!.includes('EUR'), false);
     assert.match(f.root.querySelector('.tp-cost-allocation')!.textContent!, /Operations \/ Office/);
     click(f.root.querySelector('[data-period="365"]'));
@@ -2123,7 +2137,7 @@ test('UI project pickers sort by area then project for task, quick entry, filter
     const labels = (select: HTMLSelectElement) =>
       [...select.options].slice(1).map((o) => o.textContent);
     assert.deepEqual(labels(projectSelect(f.root.querySelector('.tp-quick')!)), expected);
-    assert.deepEqual(labels(projectSelect(f.root.querySelector('.tp-filters')!)), expected);
+    assert.deepEqual(labels(projectSelect(f.root.querySelector('.tp-filter-panel')!)), expected);
     const taskModal = new TaskModal(f.plugin);
     taskModal.open();
     assert.deepEqual(labels(projectSelect(document.querySelector('.tp-modal')!)), expected);
@@ -2371,6 +2385,24 @@ test('UI workload distinguishes unknown estimates from zero and never multiplies
   }
 });
 
+test('UI calendar load uses hours and minutes alongside date and retains unknown-estimate count', async () => {
+  const f = await fixture();
+  try {
+    await f.plugin.service.createTask(draft({ title: 'Measured', plannedMinutes: 115 }));
+    await f.plugin.service.createTask(draft({ title: 'Unknown', plannedMinutes: undefined }));
+    click(f.root.querySelector('[data-tab=calendar]'));
+    const heading = f.root.querySelector<HTMLElement>(`[data-day="${day()}"] .tp-day-heading`)!;
+    assert.ok(heading.querySelector('.tp-day-number'));
+    assert.equal(heading.querySelector('.tp-day-duration')?.textContent, '1 ч 55 мин');
+    const unknown = heading.querySelector<HTMLElement>('.tp-day-unestimated')!;
+    assert.match(unknown.textContent!, /^\?\d+$/);
+    assert.match(unknown.getAttribute('aria-label')!, /Без оценки/);
+    assert.equal(heading.parentElement?.classList.contains('tp-day'), true);
+  } finally {
+    await f.close();
+  }
+});
+
 test('UI menu toggle keeps drafts, language labels and Guide access without saving settings', async () => {
   const f = await fixture();
   try {
@@ -2389,6 +2421,9 @@ test('UI menu toggle keeps drafts, language labels and Guide access without savi
     );
     click(toggle());
     assert.equal(sidebar.querySelector<HTMLElement>('.tp-nav')!.hidden, true);
+    assert.equal(sidebar.hidden, true);
+    assert.equal(toggle().closest('.tp-header'), f.root.querySelector('.tp-header'));
+    assert.equal(toggle().closest('.tp-sidebar'), null);
     assert.equal(toggle().getAttribute('aria-expanded'), 'false');
     assert.equal(toggle().querySelectorAll('svg').length, 1);
     assert.equal(toggle().getAttribute('aria-label'), words('ru').expandMenu);
@@ -2400,6 +2435,8 @@ test('UI menu toggle keeps drafts, language labels and Guide access without savi
       title.value,
     );
     click(toggle());
+    assert.equal(sidebar.hidden, false);
+    assert.equal(toggle().closest('.tp-sidebar'), sidebar);
     click(f.root.querySelector('[data-tab=manualTab]'));
     click(toggle());
     assert.equal(toggle().closest('[hidden]'), null);

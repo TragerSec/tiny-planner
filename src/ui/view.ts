@@ -70,6 +70,7 @@ export class PlannerView extends ItemView {
   private hideCalendarDone = false;
   private hideCalendarRecurring = false;
   private sidebarCollapsed = false;
+  private filtersExpanded = false;
   private statsMode: 'business' | 'finance' = 'business';
   private financeState: FinanceState = { days: 30, currency: 'USD', limit: 40 };
   private query = '';
@@ -92,7 +93,7 @@ export class PlannerView extends ItemView {
   private projectOpen = new Map<string, boolean>();
   private dashboardState: DashboardState = { days: 30, page: 0, details: false };
   private drag?: Drag;
-  private monthTimer?: ReturnType<typeof setTimeout>;
+  private monthTimer?: number;
   private opened = false;
   private resizeObserver?: ResizeObserver;
   private quickDraft?: {
@@ -282,7 +283,7 @@ export class PlannerView extends ItemView {
     const header = el(content, 'header', 'tp-header');
     const menuToggle = iconButton(
       sidebarHead,
-      'panel-left-close',
+      'chevron-left',
       this.w.collapseMenu,
       () => {
         this.sidebarCollapsed = !this.sidebarCollapsed;
@@ -301,6 +302,10 @@ export class PlannerView extends ItemView {
       brand.hidden = this.sidebarCollapsed;
       nav.hidden = this.sidebarCollapsed;
       bottom.hidden = this.sidebarCollapsed;
+      // Keep one toggle, but never reserve a full-height rail for it.
+      if (this.sidebarCollapsed) header.prepend(menuToggle);
+      else sidebarHead.appendChild(menuToggle);
+      sidebar.hidden = this.sidebarCollapsed;
     };
     updateSidebar();
     const updateMenuToggle = () => {
@@ -309,7 +314,7 @@ export class PlannerView extends ItemView {
       menuToggle.setAttribute('aria-expanded', String(!this.sidebarCollapsed));
       menuToggle.title = label;
       menuToggle.replaceChildren();
-      setIcon(menuToggle, this.sidebarCollapsed ? 'panel-left-open' : 'panel-left-close');
+      setIcon(menuToggle, this.sidebarCollapsed ? 'chevron-right' : 'chevron-left');
     };
     updateMenuToggle();
     const headings = el(header, 'div', 'tp-page-heading');
@@ -473,7 +478,24 @@ export class PlannerView extends ItemView {
       this.dashboardState.page = 0;
       this.render();
     });
-    this.areaFilter = select(filters, [['', this.w.all]], this.area);
+    const filterPanel = el(content, 'div', 'tp-filter-panel');
+    filterPanel.id = `${this.navLabelId}-filters`;
+    filterPanel.hidden = this.tab === 'manualTab' || !this.filtersExpanded;
+    const filterToggle = iconButton(
+      filters,
+      'sliders-horizontal',
+      this.w.filters,
+      () => {
+        this.filtersExpanded = !this.filtersExpanded;
+        filterPanel.hidden = !this.filtersExpanded;
+        filterToggle.setAttribute('aria-expanded', String(this.filtersExpanded));
+      },
+      'tp-filters-toggle',
+    );
+    filterToggle.setAttribute('aria-controls', filterPanel.id);
+    filterToggle.setAttribute('aria-pressed', String(Boolean(this.area || this.project)));
+    filterToggle.setAttribute('aria-expanded', String(this.filtersExpanded));
+    this.areaFilter = select(filterPanel, [['', this.w.all]], this.area);
     this.areaFilter.setAttribute('aria-label', this.w.area);
     this.areaFilter.addEventListener('change', () => {
       this.area = this.areaFilter.value;
@@ -483,7 +505,7 @@ export class PlannerView extends ItemView {
       this.updateOptions();
       this.render();
     });
-    this.projectFilter = select(filters, [['', this.w.allProjects]], this.project);
+    this.projectFilter = select(filterPanel, [['', this.w.allProjects]], this.project);
     this.projectFilter.setAttribute('aria-label', this.w.project);
     this.projectFilter.addEventListener('change', () => {
       this.project = this.projectFilter.value;
@@ -493,14 +515,15 @@ export class PlannerView extends ItemView {
       this.projectTooltip();
       this.render();
     });
-    iconButton(filters, 'filter-x', this.w.clear, () => {
+    button(filterPanel, this.w.clear, () => {
       this.area = '';
       this.project = '';
       this.query = '';
       this.dashboardState.page = 0;
       this.build();
-    });
-    content.insertBefore(filters, quick);
+    }, 'tp-text-button tp-filter-clear');
+    content.insertBefore(filterPanel, quick);
+    content.insertBefore(filters, filterPanel);
     this.main = el(content, 'main', 'tp-main');
     this.stash = el(content, 'div', 'tp-drag-stash');
     this.stash.setAttribute('aria-hidden', 'true');
@@ -1656,7 +1679,7 @@ export class PlannerView extends ItemView {
   }
   private cancelMonth(): void {
     if (this.monthTimer) {
-      clearTimeout(this.monthTimer);
+      this.contentEl.ownerDocument.defaultView?.clearTimeout(this.monthTimer);
       this.monthTimer = undefined;
     }
   }
@@ -1670,7 +1693,11 @@ export class PlannerView extends ItemView {
       .forEach((n) => n.classList.remove('tp-drop-target'));
   }
   private calendar(tasks: Task[], subscriptions: Task[]): void {
+    this.main.classList.add('tp-has-calendar');
+    const pageContent = this.main.closest('.tp-content');
+    pageContent?.classList.toggle('tp-calendar-mode-day', this.calendarView === 'day');
     const surface = el(this.main, 'section', 'tp-calendar-surface');
+    surface.classList.toggle('tp-calendar-mode-day', this.calendarView === 'day');
     const toolbar = el(surface, 'div', 'tp-calendar-toolbar');
     el(toolbar, 'span', 'tp-calendar-caption', this.w.calendar);
     const change = (amount: number) => {
@@ -1769,7 +1796,7 @@ export class PlannerView extends ItemView {
         if (this.drag) {
           e.preventDefault();
           if (!this.monthTimer)
-            this.monthTimer = setTimeout(() => {
+            this.monthTimer = this.contentEl.ownerDocument.defaultView?.setTimeout(() => {
               this.monthTimer = undefined;
               change(amount);
             }, 650);
@@ -1828,8 +1855,9 @@ export class PlannerView extends ItemView {
       cell.dataset.day = date;
       cell.setAttribute('role', 'group');
       cell.setAttribute('aria-label', date);
+      const dayHeading = el(cell, 'div', 'tp-day-heading');
       const dateButton = button(
-        cell,
+        dayHeading,
         this.calendarView === 'day'
           ? new Intl.DateTimeFormat(this.locale(), {
               weekday: 'long',
@@ -1846,19 +1874,14 @@ export class PlannerView extends ItemView {
       dateButton.setAttribute('aria-label', dateButton.title);
       const load = dayLoad(tasks, date, this.plugin.settings.dailyCapacityMinutes ?? 480);
       if (this.calendarView !== 'day' && (load.minutes || load.unestimated)) {
-        const summary = el(
-          cell,
-          'div',
-          'tp-day-load',
-          [
-            load.minutes ? `${load.minutes} ${this.w.minuteUnit}` : '',
-            load.unestimated ? `${this.w.unestimated}: ${load.unestimated}` : '',
-          ]
-            .filter(Boolean)
-            .join(' · '),
-        );
+        const summary = el(dayHeading, 'div', 'tp-day-load');
+        if (load.minutes) el(summary, 'span', 'tp-day-duration', this.duration(load.minutes));
+        if (load.unestimated) {
+          const unknown = el(summary, 'span', 'tp-day-unestimated', `?${load.unestimated}`);
+          unknown.title = `${this.w.unestimated}: ${load.unestimated}`;
+          unknown.setAttribute('aria-label', unknown.title);
+        }
         summary.classList.toggle('tp-load-over', load.over);
-        if (load.unestimated) summary.title = `${this.w.unestimated}: ${load.unestimated}`;
       }
       const deadlines = projects.filter((p) => p.due === date);
       for (const project of deadlines)

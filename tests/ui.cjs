@@ -2669,6 +2669,7 @@ const theme = require('./browser-theme.cjs');
       assert.ok(
         (await page.locator('.tp-calendar-grid').textContent()).includes('QA Calendar completed'),
       );
+      assert.ok(await page.locator('[data-calendar-hide-done]').isVisible());
       await page.locator('[data-calendar-hide-done]').click();
       assert.equal(
         (await page.locator('.tp-calendar-grid').textContent()).includes('QA Calendar completed'),
@@ -2684,6 +2685,7 @@ const theme = require('./browser-theme.cjs');
         await page.locator('[data-calendar-hide-done]').getAttribute('aria-pressed'),
         'true',
       );
+      assert.ok(await page.locator('[data-calendar-hide-done]').isVisible());
       await page.locator('[data-calendar-hide-done]').click();
       assert.ok(
         (await page.locator('.tp-calendar-grid').textContent()).includes('QA Calendar completed'),
@@ -2720,6 +2722,7 @@ const theme = require('./browser-theme.cjs');
         await page.locator('[data-calendar-view=day]').click();
         const load = await page.locator('.tp-workload-panel').textContent();
         const toggle = page.locator('[data-calendar-hide-recurring]');
+        assert.ok(await toggle.isVisible());
         await toggle.focus();
         await page.keyboard.press('Space');
         assert.equal(await toggle.getAttribute('aria-pressed'), 'true');
@@ -2749,7 +2752,8 @@ const theme = require('./browser-theme.cjs');
             1,
           );
         }
-        await page.locator('[data-calendar-hide-done]').click();
+        assert.ok(await page.locator('[data-calendar-hide-done]').isVisible());
+      await page.locator('[data-calendar-hide-done]').click();
         assert.equal(
           await page.locator('.tp-task-title').filter({ hasText: 'QA Repeat filter done' }).count(),
           0,
@@ -2777,7 +2781,8 @@ const theme = require('./browser-theme.cjs');
           await page.locator('.tp-task-title').filter({ hasText: 'QA Repeat filter done' }).count(),
           0,
         );
-        await page.locator('[data-calendar-hide-done]').click();
+        assert.ok(await page.locator('[data-calendar-hide-done]').isVisible());
+      await page.locator('[data-calendar-hide-done]').click();
         assert.equal(
           await page.evaluate(() => JSON.stringify(window.tp.plugin.repo.snapshot())),
           notes,
@@ -2806,6 +2811,7 @@ const theme = require('./browser-theme.cjs');
                 '[data-calendar-hide-recurring]',
               ]) {
                 const toggle = page.locator(selector);
+                assert.ok(await toggle.isVisible());
                 const before = await toggle.boundingBox();
                 await toggle.click();
                 const after = await toggle.boundingBox();
@@ -2927,9 +2933,11 @@ const theme = require('./browser-theme.cjs');
           () => document.querySelectorAll('[data-day="2026-10-02"] .tp-done').length === 1,
         );
         assert.equal(await cell.locator('.tp-task').count(), 18);
-        await page.locator('[data-calendar-hide-done]').click();
+        assert.ok(await page.locator('[data-calendar-hide-done]').isVisible());
+      await page.locator('[data-calendar-hide-done]').click();
         assert.equal(await cell.locator('.tp-task').count(), 17);
-        await page.locator('[data-calendar-hide-done]').click();
+        assert.ok(await page.locator('[data-calendar-hide-done]').isVisible());
+      await page.locator('[data-calendar-hide-done]').click();
         assert.equal(await cell.locator('.tp-task').count(), 18);
         for (const width of [600, 320]) {
           await setViewport({ width, height: 900 });
@@ -3200,7 +3208,7 @@ const theme = require('./browser-theme.cjs');
           assert.ok(
             await page
               .locator('.tp-filters')
-              .evaluate((n) => n.nextElementSibling.matches('.tp-quick')),
+              .evaluate((n) => n.nextElementSibling.matches('.tp-filter-panel') && n.nextElementSibling.nextElementSibling.matches('.tp-quick')),
           );
           await toggle.focus();
           await page.keyboard.press('Enter');
@@ -3326,7 +3334,9 @@ const theme = require('./browser-theme.cjs');
               assert.equal(await page.locator('.tp-nav').isVisible(), false);
               assert.equal(await page.locator('[data-menu-toggle]').count(), 1);
               assert.equal(await toggle.locator('svg').count(), 1);
-              assert.equal(await toggle.locator('xpath=ancestor::aside').count(), 1);
+              assert.equal(await toggle.locator('xpath=ancestor::aside').count(), 0);
+              assert.equal(await toggle.locator('xpath=ancestor::header').count(), 1);
+              assert.equal(await page.locator('.tp-sidebar').isVisible(), false);
               assert.equal(await title.inputValue(), 'Sidebar draft');
               const contentAfter = await page.locator('.tp-content').boundingBox();
               const buttonAfter = await toggle.boundingBox();
@@ -3344,6 +3354,8 @@ const theme = require('./browser-theme.cjs');
               await page.evaluate(() => window.tp.view.rebuild());
               assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
               await toggle.click();
+              assert.equal(await toggle.locator('xpath=ancestor::aside').count(), 1);
+              assert.equal(await page.locator('.tp-sidebar').isVisible(), true);
             }
             await title.fill('');
             await page.locator('[data-tab=manualTab]').click();

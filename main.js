@@ -3633,7 +3633,7 @@ var TaskService = class {
     let slug = name.replace(/[\\/:*?"<>|#^[\]\x00-\x1f]/g, " ").replace(/\s+/g, " ").slice(0, 80).replace(/[. ]+$/, "").trim() || type;
     while (new TextEncoder().encode(slug).length > 160)
       slug = Array.from(slug).slice(0, -1).join("");
-    const path = `${directory}/${slug}--${globalThis.crypto.randomUUID()}.md`;
+    const path = `${directory}/${slug}--${crypto.randomUUID()}.md`;
     const file = await this.app.vault.create(
       path,
       `---
@@ -4761,6 +4761,9 @@ var en = {
   workloadUnknownTasks: "Tasks without estimates",
   workloadOverloadedDays: "Overloaded days",
   capacity: "Available minutes per day",
+  uiScale: "Planner interface size",
+  uiScaleHelp: "Scales fonts, spacing and calendar density inside Tiny Planner only.",
+  filters: "Filters",
   unestimated: "Without estimate",
   deadline: "Deadline",
   calendarDay: "Day",
@@ -5036,6 +5039,9 @@ var ru = {
   workloadUnknownTasks: "\u0417\u0430\u0434\u0430\u0447 \u0431\u0435\u0437 \u043E\u0446\u0435\u043D\u043A\u0438",
   workloadOverloadedDays: "\u0414\u043D\u0435\u0439 \u0441 \u043F\u0435\u0440\u0435\u0433\u0440\u0443\u0437\u043A\u043E\u0439",
   capacity: "\u0414\u043E\u0441\u0442\u0443\u043F\u043D\u043E\u0435 \u0432\u0440\u0435\u043C\u044F \u0432 \u0434\u0435\u043D\u044C, \u043C\u0438\u043D",
+  uiScale: "\u0420\u0430\u0437\u043C\u0435\u0440 \u0438\u043D\u0442\u0435\u0440\u0444\u0435\u0439\u0441\u0430 \u043F\u043B\u0430\u043D\u0438\u0440\u043E\u0432\u0449\u0438\u043A\u0430",
+  uiScaleHelp: "\u041C\u0435\u043D\u044F\u0435\u0442 \u0448\u0440\u0438\u0444\u0442\u044B, \u043E\u0442\u0441\u0442\u0443\u043F\u044B \u0438 \u043F\u043B\u043E\u0442\u043D\u043E\u0441\u0442\u044C \u043A\u0430\u043B\u0435\u043D\u0434\u0430\u0440\u044F \u0442\u043E\u043B\u044C\u043A\u043E \u0432\u043D\u0443\u0442\u0440\u0438 Tiny Planner.",
+  filters: "\u0424\u0438\u043B\u044C\u0442\u0440\u044B",
   unestimated: "\u0411\u0435\u0437 \u043E\u0446\u0435\u043D\u043A\u0438",
   deadline: "\u0414\u0435\u0434\u043B\u0430\u0439\u043D",
   calendarDay: "\u0414\u0435\u043D\u044C",
@@ -5429,6 +5435,7 @@ function button(parent, text, action, cls = "") {
 }
 function iconButton(parent, icon, label, action, cls = "") {
   const b = button(parent, "", action, cls);
+  b.classList.add("tp-icon-button");
   (0, import_obsidian3.setIcon)(b, icon);
   b.title = label;
   b.setAttribute("aria-label", label);
@@ -7359,6 +7366,7 @@ var PlannerView = class _PlannerView extends import_obsidian5.ItemView {
   hideCalendarDone = false;
   hideCalendarRecurring = false;
   sidebarCollapsed = false;
+  filtersExpanded = false;
   statsMode = "business";
   financeState = { days: 30, currency: "USD", limit: 40 };
   query = "";
@@ -7547,7 +7555,7 @@ var PlannerView = class _PlannerView extends import_obsidian5.ItemView {
     const header = el(content, "header", "tp-header");
     const menuToggle = iconButton(
       sidebarHead,
-      "panel-left-close",
+      "chevron-left",
       this.w.collapseMenu,
       () => {
         this.sidebarCollapsed = !this.sidebarCollapsed;
@@ -7566,6 +7574,9 @@ var PlannerView = class _PlannerView extends import_obsidian5.ItemView {
       brand.hidden = this.sidebarCollapsed;
       nav.hidden = this.sidebarCollapsed;
       bottom.hidden = this.sidebarCollapsed;
+      if (this.sidebarCollapsed) header.prepend(menuToggle);
+      else sidebarHead.appendChild(menuToggle);
+      sidebar.hidden = this.sidebarCollapsed;
     };
     updateSidebar();
     const updateMenuToggle = () => {
@@ -7574,7 +7585,7 @@ var PlannerView = class _PlannerView extends import_obsidian5.ItemView {
       menuToggle.setAttribute("aria-expanded", String(!this.sidebarCollapsed));
       menuToggle.title = label;
       menuToggle.replaceChildren();
-      (0, import_obsidian5.setIcon)(menuToggle, this.sidebarCollapsed ? "panel-left-open" : "panel-left-close");
+      (0, import_obsidian5.setIcon)(menuToggle, this.sidebarCollapsed ? "chevron-right" : "chevron-left");
     };
     updateMenuToggle();
     const headings = el(header, "div", "tp-page-heading");
@@ -7737,7 +7748,24 @@ var PlannerView = class _PlannerView extends import_obsidian5.ItemView {
       this.dashboardState.page = 0;
       this.render();
     });
-    this.areaFilter = select(filters, [["", this.w.all]], this.area);
+    const filterPanel = el(content, "div", "tp-filter-panel");
+    filterPanel.id = `${this.navLabelId}-filters`;
+    filterPanel.hidden = this.tab === "manualTab" || !this.filtersExpanded;
+    const filterToggle = iconButton(
+      filters,
+      "sliders-horizontal",
+      this.w.filters,
+      () => {
+        this.filtersExpanded = !this.filtersExpanded;
+        filterPanel.hidden = !this.filtersExpanded;
+        filterToggle.setAttribute("aria-expanded", String(this.filtersExpanded));
+      },
+      "tp-filters-toggle"
+    );
+    filterToggle.setAttribute("aria-controls", filterPanel.id);
+    filterToggle.setAttribute("aria-pressed", String(Boolean(this.area || this.project)));
+    filterToggle.setAttribute("aria-expanded", String(this.filtersExpanded));
+    this.areaFilter = select(filterPanel, [["", this.w.all]], this.area);
     this.areaFilter.setAttribute("aria-label", this.w.area);
     this.areaFilter.addEventListener("change", () => {
       this.area = this.areaFilter.value;
@@ -7747,7 +7775,7 @@ var PlannerView = class _PlannerView extends import_obsidian5.ItemView {
       this.updateOptions();
       this.render();
     });
-    this.projectFilter = select(filters, [["", this.w.allProjects]], this.project);
+    this.projectFilter = select(filterPanel, [["", this.w.allProjects]], this.project);
     this.projectFilter.setAttribute("aria-label", this.w.project);
     this.projectFilter.addEventListener("change", () => {
       this.project = this.projectFilter.value;
@@ -7757,14 +7785,15 @@ var PlannerView = class _PlannerView extends import_obsidian5.ItemView {
       this.projectTooltip();
       this.render();
     });
-    iconButton(filters, "filter-x", this.w.clear, () => {
+    button(filterPanel, this.w.clear, () => {
       this.area = "";
       this.project = "";
       this.query = "";
       this.dashboardState.page = 0;
       this.build();
-    });
-    content.insertBefore(filters, quick);
+    }, "tp-text-button tp-filter-clear");
+    content.insertBefore(filterPanel, quick);
+    content.insertBefore(filters, filterPanel);
     this.main = el(content, "main", "tp-main");
     this.stash = el(content, "div", "tp-drag-stash");
     this.stash.setAttribute("aria-hidden", "true");
@@ -8801,7 +8830,7 @@ var PlannerView = class _PlannerView extends import_obsidian5.ItemView {
   }
   cancelMonth() {
     if (this.monthTimer) {
-      clearTimeout(this.monthTimer);
+      this.contentEl.ownerDocument.defaultView?.clearTimeout(this.monthTimer);
       this.monthTimer = void 0;
     }
   }
@@ -8813,7 +8842,11 @@ var PlannerView = class _PlannerView extends import_obsidian5.ItemView {
     this.main.querySelectorAll(".tp-drop-target").forEach((n) => n.classList.remove("tp-drop-target"));
   }
   calendar(tasks, subscriptions) {
+    this.main.classList.add("tp-has-calendar");
+    const pageContent = this.main.closest(".tp-content");
+    pageContent?.classList.toggle("tp-calendar-mode-day", this.calendarView === "day");
     const surface = el(this.main, "section", "tp-calendar-surface");
+    surface.classList.toggle("tp-calendar-mode-day", this.calendarView === "day");
     const toolbar = el(surface, "div", "tp-calendar-toolbar");
     el(toolbar, "span", "tp-calendar-caption", this.w.calendar);
     const change = (amount) => {
@@ -8901,7 +8934,7 @@ var PlannerView = class _PlannerView extends import_obsidian5.ItemView {
         if (this.drag) {
           e.preventDefault();
           if (!this.monthTimer)
-            this.monthTimer = setTimeout(() => {
+            this.monthTimer = this.contentEl.ownerDocument.defaultView?.setTimeout(() => {
               this.monthTimer = void 0;
               change(amount);
             }, 650);
@@ -8947,8 +8980,9 @@ var PlannerView = class _PlannerView extends import_obsidian5.ItemView {
       cell.dataset.day = date;
       cell.setAttribute("role", "group");
       cell.setAttribute("aria-label", date);
+      const dayHeading = el(cell, "div", "tp-day-heading");
       const dateButton = button(
-        cell,
+        dayHeading,
         this.calendarView === "day" ? new Intl.DateTimeFormat(this.locale(), {
           weekday: "long",
           day: "numeric",
@@ -8962,17 +8996,14 @@ var PlannerView = class _PlannerView extends import_obsidian5.ItemView {
       dateButton.setAttribute("aria-label", dateButton.title);
       const load = dayLoad(tasks, date, this.plugin.settings.dailyCapacityMinutes ?? 480);
       if (this.calendarView !== "day" && (load.minutes || load.unestimated)) {
-        const summary = el(
-          cell,
-          "div",
-          "tp-day-load",
-          [
-            load.minutes ? `${load.minutes} ${this.w.minuteUnit}` : "",
-            load.unestimated ? `${this.w.unestimated}: ${load.unestimated}` : ""
-          ].filter(Boolean).join(" \xB7 ")
-        );
+        const summary = el(dayHeading, "div", "tp-day-load");
+        if (load.minutes) el(summary, "span", "tp-day-duration", this.duration(load.minutes));
+        if (load.unestimated) {
+          const unknown = el(summary, "span", "tp-day-unestimated", `?${load.unestimated}`);
+          unknown.title = `${this.w.unestimated}: ${load.unestimated}`;
+          unknown.setAttribute("aria-label", unknown.title);
+        }
         summary.classList.toggle("tp-load-over", load.over);
-        if (load.unestimated) summary.title = `${this.w.unestimated}: ${load.unestimated}`;
       }
       const deadlines = projects.filter((p) => p.due === date);
       for (const project of deadlines)
@@ -9167,19 +9198,23 @@ var TinyPlanner = class extends import_obsidian6.Plugin {
     folder: "Planner",
     language: "ru",
     dateFormat: "dmy",
-    dailyCapacityMinutes: 480
+    dailyCapacityMinutes: 480,
+    uiScalePercent: 100
   };
   repo;
   service;
   importer;
   async onload() {
-    const saved = await this.loadData();
+    const raw = await this.loadData();
+    const saved = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
     this.settings = {
-      folder: typeof saved?.folder === "string" ? saved.folder : "Planner",
-      language: saved?.language === "en" ? "en" : "ru",
-      dailyCapacityMinutes: Number.isFinite(saved?.dailyCapacityMinutes) ? Math.min(1440, Math.max(0, Math.round(saved.dailyCapacityMinutes))) : 480,
-      dateFormat: ["dmy", "mdy", "iso"].includes(saved?.dateFormat) ? saved.dateFormat : "dmy"
+      folder: typeof saved.folder === "string" ? saved.folder : "Planner",
+      language: saved.language === "en" ? "en" : "ru",
+      dailyCapacityMinutes: typeof saved.dailyCapacityMinutes === "number" && Number.isFinite(saved.dailyCapacityMinutes) ? Math.min(1440, Math.max(0, Math.round(saved.dailyCapacityMinutes))) : 480,
+      dateFormat: saved.dateFormat === "dmy" || saved.dateFormat === "mdy" || saved.dateFormat === "iso" ? saved.dateFormat : "dmy",
+      uiScalePercent: this.normalizeUiScale(saved.uiScalePercent)
     };
+    this.applyAppearance();
     this.repo = new Repository(this.app);
     this.service = new TaskService(this.app, this.repo, () => this.settings.folder);
     this.importer = new LegacyImporter(this.app, this.repo, this.service);
@@ -9226,6 +9261,14 @@ var TinyPlanner = class extends import_obsidian6.Plugin {
     );
   }
   commandsRegistered = false;
+  normalizeUiScale(value) {
+    if (value == null || value === "") return 100;
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.min(115, Math.max(85, Math.round(n))) : 100;
+  }
+  applyAppearance() {
+    document.body.style.setProperty("--tp-ui-scale", String(this.normalizeUiScale(this.settings.uiScalePercent) / 100));
+  }
   registerCommands() {
     const w = words(this.settings.language);
     const commands = [
@@ -9280,6 +9323,95 @@ var PlannerSettingsTab = class extends import_obsidian6.PluginSettingTab {
     super(planner.app, planner);
     this.planner = planner;
   }
+    getSettingDefinitions() {
+        const w = words(this.planner.settings.language);
+        const refreshViews = () => {
+            for (const leaf of this.planner.app.workspace.getLeavesOfType(VIEW_TYPE))
+                if (leaf.view instanceof PlannerView)
+                    leaf.view.rebuild();
+        };
+        return [
+            {
+                name: w.folder, desc: w.folderHelp,
+                render: (setting) => {
+                    setting.addText((field) => field.setValue(this.planner.settings.folder).onChange(async (value) => {
+                        const path = normalizePath(value.trim());
+                        if (!path || path.startsWith('/') || path.split('/').some((part) => part === '..' || part.startsWith('.')))
+                            return;
+                        this.planner.settings.folder = path;
+                        await this.planner.saveData(this.planner.settings);
+                    }));
+                },
+            },
+            {
+                name: w.language,
+                render: (setting) => {
+                    setting.addDropdown((dropdown) => dropdown
+                        .addOptions({ ru: 'Русский', en: 'English' })
+                        .setValue(this.planner.settings.language)
+                        .onChange(async (value) => {
+                        this.planner.settings.language = value === 'en' ? 'en' : 'ru';
+                        this.planner.registerCommands();
+                        await this.planner.saveData(this.planner.settings);
+                        refreshViews();
+                        this.update();
+                    }));
+                },
+            },
+            {
+                name: w.dateFormat, desc: w.dateFormatHelp,
+                render: (setting) => {
+                    setting.addDropdown((dropdown) => dropdown
+                        .addOptions({ dmy: 'DD.MM.YYYY', mdy: 'MM/DD/YYYY', iso: 'YYYY-MM-DD' })
+                        .setValue(this.planner.settings.dateFormat)
+                        .onChange(async (value) => {
+                        if (value !== 'dmy' && value !== 'mdy' && value !== 'iso')
+                            return;
+                        this.planner.settings.dateFormat = value;
+                        await this.planner.saveData(this.planner.settings);
+                        refreshViews();
+                    }));
+                },
+            },
+            {
+                name: w.capacity,
+                render: (setting) => {
+                    setting.addText((field) => field
+                        .setValue(String(this.planner.settings.dailyCapacityMinutes ?? 480))
+                        .onChange(async (value) => {
+                        const n = Number(value);
+                        if (!value.trim() || !Number.isFinite(n) || n < 0 || n > 1440)
+                            return;
+                        this.planner.settings.dailyCapacityMinutes = Math.round(n);
+                        await this.planner.saveData(this.planner.settings);
+                        refreshViews();
+                    }));
+                },
+            },
+            {
+                name: w.uiScale, desc: w.uiScaleHelp,
+                render: (setting) => {
+                    setting.addDropdown((dropdown) => dropdown
+                        .addOptions({ '85': '85%', '90': '90%', '95': '95%', '100': '100%', '105': '105%', '110': '110%', '115': '115%' })
+                        .setValue(String(this.planner.settings.uiScalePercent ?? 100))
+                        .onChange(async (value) => {
+                        this.planner.settings.uiScalePercent = this.planner.normalizeUiScale(value);
+                        this.planner.applyAppearance();
+                        await this.planner.saveData(this.planner.settings);
+                        refreshViews();
+                    }));
+                },
+            },
+            {
+                name: w.import, desc: w.importText,
+                render: (setting) => {
+                    setting.addButton((button) => button
+                        .setButtonText(w.importStart)
+                        .onClick(() => new ImportModal(this.planner).open()));
+                },
+            },
+        ];
+    }
   display() {
     const w = words(this.planner.settings.language);
     this.containerEl.replaceChildren();
@@ -9316,6 +9448,23 @@ var PlannerSettingsTab = class extends import_obsidian6.PluginSettingTab {
         const n = Number(value);
         if (!value.trim() || !Number.isFinite(n) || n < 0 || n > 1440) return;
         this.planner.settings.dailyCapacityMinutes = Math.round(n);
+        await this.planner.saveData(this.planner.settings);
+        for (const leaf of this.planner.app.workspace.getLeavesOfType(VIEW_TYPE))
+          if (leaf.view instanceof PlannerView) leaf.view.rebuild();
+      })
+    );
+    new import_obsidian6.Setting(this.containerEl).setName(w.uiScale).setDesc(w.uiScaleHelp).addDropdown(
+      (d) => d.addOptions({
+        "85": "85%",
+        "90": "90%",
+        "95": "95%",
+        "100": "100%",
+        "105": "105%",
+        "110": "110%",
+        "115": "115%"
+      }).setValue(String(this.planner.settings.uiScalePercent ?? 100)).onChange(async (value) => {
+        this.planner.settings.uiScalePercent = this.planner.normalizeUiScale(value);
+        this.planner.applyAppearance();
         await this.planner.saveData(this.planner.settings);
         for (const leaf of this.planner.app.workspace.getLeavesOfType(VIEW_TYPE))
           if (leaf.view instanceof PlannerView) leaf.view.rebuild();

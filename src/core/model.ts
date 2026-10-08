@@ -95,8 +95,9 @@ export function normalizeStatus(value: unknown): Status {
 }
 export function strings(value: unknown): string[] {
   if (value == null) return [];
-  return (Array.isArray(value) ? value : [value]).map((v) =>
-    typeof v === 'object' && v && 'path' in v ? String(v.path) : String(v),
+  const entries: unknown[] = Array.isArray(value) ? value as unknown[] : [value];
+  return entries.map((v) =>
+    typeof v === 'object' && v !== null && 'path' in v ? String(v.path) : String(v),
   );
 }
 export function link(value: unknown): string {

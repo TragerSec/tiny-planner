@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.2
+
+- Refine sidebar alignment and navigation spacing, and keep utility actions flat without background blocks.
+
+- Reduce typography, card padding and vertical spacing, especially across Day/Week/Month calendar layouts, while keeping full task titles visible.
+- Add an adjustable 85–115% planner interface scale for fonts and spacing.
+- Brighten the To do status accent and replace the collapsed sidebar rail with a single borderless chevron in the page header.
+- Keep area/project filters in a compact expandable panel, while calendar completed/recurring toggles remain visible beside Day/Week/Month.
+- Align search, quick task entry and date controls to a consistent height and horizontal inset.
+- Align calendar daily load with its date and format duration in hours and minutes; keep unknown estimates discoverable through a small counter with a tooltip.
+- Improve Obsidian Community review compatibility: reduce CSS override and selector complexity, add searchable settings for Obsidian 1.13+ while retaining settings on older versions, and tighten handling of loaded settings.
+- Limit GitHub Release assets to the three files Obsidian installs and add GitHub artifact provenance attestations for the JavaScript and stylesheet.
+
 ## 1.0.1
 
 - Keep planner leaves in their workspace positions during plugin unload and updates by letting Obsidian manage their lifecycle.

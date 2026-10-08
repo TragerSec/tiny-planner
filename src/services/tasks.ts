@@ -95,7 +95,8 @@ export class TaskService {
     return this.serial(path, async () => {
       const file = this.file(path);
       let undo: Undo | undefined;
-      await this.app.fileManager.processFrontMatter(file, (fm) => {
+      await this.app.fileManager.processFrontMatter(file, (raw) => {
+        const fm: FM = raw as FM;
         if (Number(fm.topSchema) > SCHEMA) throw new Error('Cannot edit a future planner schema.');
         if (
           Number(fm.topSchema) !== SCHEMA ||
@@ -156,7 +157,7 @@ export class TaskService {
         .trim() || type;
     while (new TextEncoder().encode(slug).length > 160)
       slug = Array.from(slug).slice(0, -1).join('');
-    const path = `${directory}/${slug}--${globalThis.crypto.randomUUID()}.md`;
+    const path = `${directory}/${slug}--${crypto.randomUUID()}.md`;
     const file = await this.app.vault.create(
       path,
       `---\n${stringifyYaml({ ...fm, type, title: name, topSchema: SCHEMA })}---\n\n${body || '# ' + name + '\n'}`,

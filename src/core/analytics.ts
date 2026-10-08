@@ -104,7 +104,7 @@ export function analytics(
   const byProject = new Map(result.projects.map((p) => [p.project.path, p]));
   const byDay = new Map(result.activity.map((d) => [d.date, d]));
   for (const p of projects) {
-    const status = p.status as keyof Analytics['projectStatuses'];
+    const status = p.status;
     if (Object.prototype.hasOwnProperty.call(result.projectStatuses, status))
       result.projectStatuses[status]++;
   }

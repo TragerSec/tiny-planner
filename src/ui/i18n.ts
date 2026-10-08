@@ -13,6 +13,9 @@ const en = {
   workloadUnknownTasks: 'Tasks without estimates',
   workloadOverloadedDays: 'Overloaded days',
   capacity: 'Available minutes per day',
+  uiScale: 'Planner interface size',
+  uiScaleHelp: 'Scales fonts, spacing and calendar density inside Tiny Planner only.',
+  filters: 'Filters',
   unestimated: 'Without estimate',
   deadline: 'Deadline',
   calendarDay: 'Day',
@@ -306,6 +309,9 @@ const ru: Record<keyof typeof en, string> = {
   workloadUnknownTasks: 'Задач без оценки',
   workloadOverloadedDays: 'Дней с перегрузкой',
   capacity: 'Доступное время в день, мин',
+  uiScale: 'Размер интерфейса планировщика',
+  uiScaleHelp: 'Меняет шрифты, отступы и плотность календаря только внутри Tiny Planner.',
+  filters: 'Фильтры',
   unestimated: 'Без оценки',
   deadline: 'Дедлайн',
   calendarDay: 'День',
@@ -668,7 +674,7 @@ const russianErrors: Record<string, string> = {
 /** Localize user-facing errors while keeping core/service exceptions stable for callers. */
 export function messageText(message: string, language: string): string {
   if (language !== 'ru') return message;
-  if (russianErrors[message]) return russianErrors[message]!;
+  if (russianErrors[message]) return russianErrors[message];
   if (message.includes('\n'))
     return message
       .split('\n')
