@@ -19,3 +19,19 @@ After listing approval, search for Tiny Planner in **Settings → Community plug
 ## First steps
 
 Create an area and a project, then add a task in Today or Inbox. Click a title to edit its details. Choose your interface language and date format in settings. Read the built-in Guide or [GUIDE.md](GUIDE.md) for behavior and controls.
+
+## Committing version 1.0.2 without building on your computer
+
+Push the full source tree to the repository default branch. GitHub Actions first runs
+all quality checks using the TypeScript-generated `main.js`. After checks succeed,
+a separate, write-scoped job **sync-generated-bundle** rebuilds and commits the
+exact generated `main.js` to the default branch, only if it differs. The write
+permission is never granted to pull-request jobs. Wait for both Actions jobs
+to succeed, and confirm that the generated bundle commit is visible, **before**
+creating the release tag `1.0.2`. The tag-triggered Release workflow retains
+strict `npm run verify:build` and does not rewrite release files.
+
+If the branch is protected or GitHub Actions cannot commit, the synchronization
+job will fail explicitly. Enable permission for Actions to write repository
+contents or update `main.js` using a trusted GitHub build; do not disable
+`verify:build`.
