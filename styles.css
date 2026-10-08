@@ -598,7 +598,7 @@
     grid-template-columns: repeat(7, minmax(120px, 1fr));
     min-width: 850px;
   }
-   .tp-main.tp-has-calendar {
+  .tp-main.tp-has-calendar {
     overflow-x: auto;
   }
 }
@@ -716,7 +716,7 @@
   grid-template-columns: repeat(7, minmax(120px, 1fr));
   min-width: 850px;
 }
-.tp-host.tp-narrow  .tp-main.tp-has-calendar {
+.tp-host.tp-narrow .tp-main.tp-has-calendar {
   overflow-x: auto;
 }
 
@@ -1919,7 +1919,6 @@
 }
 .tp-host :is(.tp-done, .tp-failed) :is(.tp-task-title, .tp-board-title) {
   text-decoration: line-through;
-
 }
 .tp-host .tp-day {
   display: flex;
@@ -2621,7 +2620,7 @@
   margin-top: 0;
 }
 .tp-host
-   .tp-content.tp-calendar-mode-day
+  .tp-content.tp-calendar-mode-day
   :is(.tp-calendar-toolbar, .tp-calendar-views, .tp-workload-panel) {
   max-width: 880px;
 }
@@ -2957,7 +2956,7 @@
   font-weight: 600;
 }
 .tp-host
-   .tp-content.tp-calendar-mode-day
+  .tp-content.tp-calendar-mode-day
   :is(.tp-calendar-controls, .tp-calendar-toolbar, .tp-workload-panel) {
   max-width: 880px;
 }
@@ -4325,7 +4324,6 @@
   min-width: 120px;
 }
 .tp-host .tp-filters-toggle,
-
 .tp-host .tp-filters-toggle[aria-expanded='true'] {
   border-color: var(--interactive-accent);
   color: var(--text-normal);
@@ -4367,13 +4365,36 @@
 }
 
 /* Compact search: advanced filters are a separate, explicitly hidden row. */
-.tp-host .tp-filters { display: flex; flex-wrap: nowrap; gap: 6px; margin-bottom: 6px; }
-.tp-host .tp-filters > input[type="search"] { flex: 1 1 auto; min-width: 0; }
-.tp-host .tp-filters > .tp-filters-toggle { flex: 0 0 30px; width: 30px; height: 30px; padding: 5px; border: 1px solid var(--tp-outline); }
-.tp-host .tp-filters-toggle[aria-pressed="true"] { color: var(--tp-status-todo); border-color: var(--tp-status-todo); }
-.tp-host .tp-filter-panel { margin-bottom: 8px; }
-.tp-host .tp-filter-panel[hidden] { display: none; }
-.tp-host .tp-quick { margin-bottom: 12px; }
+.tp-host .tp-filters {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.tp-host .tp-filters > input[type='search'] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.tp-host .tp-filters > .tp-filters-toggle {
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  padding: 5px;
+  border: 1px solid var(--tp-outline);
+}
+.tp-host .tp-filters-toggle[aria-pressed='true'] {
+  color: var(--tp-status-todo);
+  border-color: var(--tp-status-todo);
+}
+.tp-host .tp-filter-panel {
+  margin-bottom: 8px;
+}
+.tp-host .tp-filter-panel[hidden] {
+  display: none;
+}
+.tp-host .tp-quick {
+  margin-bottom: 12px;
+}
 
 /* Same baseline, height and inset for search and quick entry controls. */
 .tp-host .tp-filters,
@@ -4559,4 +4580,129 @@
 .tp-host .tp-sidebar-bottom > button.tp-text-button:focus-visible {
   outline: 1px solid var(--interactive-accent);
   outline-offset: -1px;
+}
+
+/* Status circles are glyph-only controls. Do not inherit filled Obsidian button skins. */
+.tp-host button.tp-check,
+.tp-host button.tp-check:hover,
+.tp-host button.tp-check:active,
+.tp-host button.tp-check:focus,
+.tp-host button.tp-check:focus-visible {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  border: 0;
+  box-shadow: none;
+}
+.tp-host button.tp-check:focus-visible {
+  outline: 1px solid var(--interactive-accent);
+  outline-offset: 1px;
+}
+
+/* These glyph/text controls must stay transparent even with a theme's filled
+   !important button skin. Keep the exception limited to these exact controls. */
+.tp-host
+  :is(
+    button.tp-check,
+    button.tp-task-title,
+    button.tp-board-title,
+    .tp-day:not(.tp-day-today) button.tp-day-number,
+    .tp-calendar-day-view button.tp-day-number,
+    .tp-sidebar-bottom > button.tp-text-button
+  ) {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.tp-host button.tp-check {
+  border-radius: 50%;
+}
+
+/* Week/month keep seven columns inside the owning pane instead of clipping
+   the last days behind an 850px-wide internal horizontal scroller. */
+.tp-host .tp-calendar-surface {
+  overflow-x: visible;
+}
+.tp-host .tp-calendar-surface .tp-calendar-grid:not(.tp-calendar-day-view) {
+  min-width: 0;
+  max-width: 100%;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+.tp-host.tp-narrow .tp-calendar-toolbar {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.tp-host.tp-narrow .tp-calendar-navigation {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.tp-host.tp-narrow .tp-calendar-navigation h2 {
+  min-width: 0;
+}
+.tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-day {
+  padding: 4px 0;
+}
+.tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-weekday {
+  padding-inline: 4px;
+}
+.tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-day-heading {
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-day-load {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  white-space: normal;
+}
+.tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-day-duration {
+  white-space: normal;
+}
+.tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-task-compact {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 4px 1px;
+}
+.tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-task-context {
+  grid-column: 1;
+  grid-row: 1;
+}
+.tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-task-compact > .tp-check {
+  grid-column: 1;
+  grid-row: 2;
+}
+.tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-task-body {
+  grid-column: 1;
+  grid-row: 3;
+}
+.tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-task-actions {
+  grid-column: 1;
+  grid-row: 4;
+  flex-wrap: wrap;
+}
+.tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-calendar-payment {
+  padding-inline: 2px;
+}
+.tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-calendar-billing h3 {
+  overflow-wrap: anywhere;
+}
+.tp-host .tp-day .tp-task-title {
+  font-size: calc(12px * var(--tp-ui-scale, 1));
+}
+.tp-host .tp-day-number {
+  box-shadow: none;
+}
+.tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-task-heading {
+  gap: 0;
+  flex-wrap: wrap;
+}
+.tp-host.tp-narrow
+  .tp-calendar-grid:not(.tp-calendar-day-view)
+  .tp-task-heading
+  > .tp-description-icon {
+  order: -1;
+  flex-basis: 100%;
+}
+/* A zero-basis title must not share the description icon's full-width line:
+   retain at least one character before flex wrapping the following markers. */
+.tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-task-heading > .tp-task-title {
+  min-width: min(1ch, 100%);
 }

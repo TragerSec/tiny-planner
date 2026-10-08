@@ -153,6 +153,14 @@ class PluginSettingTab {
     this.plugin = plugin;
     this.containerEl = document.createElement('div');
   }
+  update() {
+    this.settingItems = this.getSettingDefinitions();
+    this.containerEl.replaceChildren();
+    for (const definition of this.settingItems) {
+      const setting = new Setting(this.containerEl).setName(definition.name);
+      definition.render?.(setting);
+    }
+  }
 }
 class Setting {
   constructor(parent) {
@@ -168,10 +176,36 @@ class Setting {
   setDesc() {
     return this;
   }
-  addText() {
+  addText(callback) {
+    const node = document.createElement('input');
+    this.label.append(node);
+    const control = {
+      setValue(value) {
+        node.value = value;
+        return control;
+      },
+      onChange(fn) {
+        node.addEventListener('input', () => void fn(node.value));
+        return control;
+      },
+    };
+    callback(control);
     return this;
   }
-  addButton() {
+  addButton(callback) {
+    const node = document.createElement('button');
+    this.label.append(node);
+    const control = {
+      setButtonText(value) {
+        node.textContent = value;
+        return control;
+      },
+      onClick(fn) {
+        node.addEventListener('click', fn);
+        return control;
+      },
+    };
+    callback(control);
     return this;
   }
   addDropdown(callback) {

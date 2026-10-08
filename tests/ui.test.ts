@@ -876,11 +876,37 @@ test('declarative settings remain searchable alongside the legacy settings tab',
   const f = await fixture();
   try {
     const tab = (f.plugin as any).settingTabs[0];
-    const names = tab.getSettingDefinitions().map((definition: { name: string }) => definition.name);
+    const names = tab
+      .getSettingDefinitions()
+      .map((definition: { name: string }) => definition.name);
     const w = words(f.plugin.settings.language);
     assert.deepEqual(names, [w.folder, w.language, w.dateFormat, w.capacity, w.uiScale, w.import]);
     tab.display(); // Retain compatibility with Obsidian versions older than 1.13.
     assert.equal(tab.containerEl.querySelectorAll('select').length >= 2, true);
+    f.app.workspace.getLeavesOfType = () => [{ view: f.view }];
+    tab.update(); // Exercise the modern render callbacks, persistence and re-indexing.
+    const language = tab.containerEl.querySelector('select') as HTMLSelectElement;
+    change(language, 'en');
+    await tick();
+    assert.equal(f.plugin.settings.language, 'en');
+    assert.equal((f.plugin as any).data.language, 'en');
+    assert.equal(tab.settingItems[0].name, words('en').folder);
+    assert.ok(f.root.querySelector('[data-tab=today]')?.textContent?.includes('Today'));
+    const controls = [...tab.containerEl.querySelectorAll('select')] as HTMLSelectElement[];
+    change(
+      controls.find((s) => s.options[0]?.value === 'dmy')!,
+      'iso',
+    );
+    await tick();
+    assert.equal(f.plugin.settings.dateFormat, 'iso');
+    assert.equal(f.root.querySelector<HTMLInputElement>('.tp-quick .tp-date')?.value, day());
+    change(
+      controls.find((s) => s.options[0]?.value === '85')!,
+      '115',
+    );
+    await tick();
+    assert.equal((f.plugin as any).data.uiScalePercent, 115);
+    assert.equal(f.root.style.getPropertyValue('--tp-ui-scale'), '1.15');
   } finally {
     await f.close();
   }
@@ -1184,9 +1210,11 @@ test('Russian translations cover literal production validation errors without ge
   ]) {
     const source = readFileSync(file, 'utf8');
     for (const match of source.matchAll(/throw new Error\(\s*'([^']+)'/g)) {
-      const translated = messageText(match[1]!, 'ru');
-      assert.notEqual(translated, match[1]);
-      assert.ok(!translated.includes('Подробности в консоли'), match[1]);
+      const literal = match[1];
+      if (literal === undefined) continue;
+      const translated = messageText(literal, 'ru');
+      assert.notEqual(translated, literal);
+      assert.ok(!translated.includes('Подробности в консоли'), literal);
     }
   }
 });
@@ -2412,16 +2440,18 @@ test('UI menu toggle keeps drafts, language labels and Guide access without savi
     title.value = 'Draft stays while toggling';
     assert.equal(toggle().getAttribute('aria-expanded'), 'true');
     assert.equal(toggle().getAttribute('aria-label'), words('ru').collapseMenu);
-    const sidebar = f.root.querySelector<HTMLElement>('.tp-sidebar')!;
-    assert.equal(toggle().closest('.tp-sidebar'), sidebar);
+    const sidebar = () => f.root.querySelector<HTMLElement>('.tp-sidebar')!;
+    assert.equal(toggle().closest('.tp-sidebar'), sidebar());
     assert.equal(f.root.querySelectorAll('[data-menu-toggle]').length, 1);
     assert.equal(
       toggle().getAttribute('aria-controls'),
-      `${sidebar.id}-navigation ${sidebar.id}-actions`,
+      `${sidebar().id}-navigation ${sidebar().id}-actions`,
     );
+    toggle().focus();
     click(toggle());
-    assert.equal(sidebar.querySelector<HTMLElement>('.tp-nav')!.hidden, true);
-    assert.equal(sidebar.hidden, true);
+    assert.equal(sidebar().querySelector<HTMLElement>('.tp-nav')!.hidden, true);
+    assert.equal(f.dom.window.document.activeElement, toggle());
+    assert.equal(sidebar().hidden, true);
     assert.equal(toggle().closest('.tp-header'), f.root.querySelector('.tp-header'));
     assert.equal(toggle().closest('.tp-sidebar'), null);
     assert.equal(toggle().getAttribute('aria-expanded'), 'false');
@@ -2435,8 +2465,8 @@ test('UI menu toggle keeps drafts, language labels and Guide access without savi
       title.value,
     );
     click(toggle());
-    assert.equal(sidebar.hidden, false);
-    assert.equal(toggle().closest('.tp-sidebar'), sidebar);
+    assert.equal(sidebar().hidden, false);
+    assert.equal(toggle().closest('.tp-sidebar'), sidebar());
     click(f.root.querySelector('[data-tab=manualTab]'));
     click(toggle());
     assert.equal(toggle().closest('[hidden]'), null);
@@ -2448,6 +2478,25 @@ test('UI menu toggle keeps drafts, language labels and Guide access without savi
     assert.equal(toggle().getAttribute('aria-label'), words('en').expandMenu);
     click(toggle());
     assert.equal(toggle().getAttribute('aria-label'), words('en').collapseMenu);
+  } finally {
+    await f.close();
+  }
+});
+
+test('UI scale applies to owning view and modal without changing the global document', async () => {
+  const f = await fixture();
+  try {
+    f.plugin.settings.uiScalePercent = 115;
+    f.app.workspace.getLeavesOfType = () => [{ view: f.view }];
+    f.plugin.applyAppearance();
+    assert.equal(f.root.style.getPropertyValue('--tp-ui-scale'), '1.15');
+    assert.equal(f.dom.window.document.body.style.getPropertyValue('--tp-ui-scale'), '');
+    f.view.rebuild();
+    assert.equal(f.root.style.getPropertyValue('--tp-ui-scale'), '1.15');
+    const modal = new TaskModal(f.plugin);
+    modal.open();
+    assert.equal(modal.contentEl.style.getPropertyValue('--tp-ui-scale'), '1.15');
+    modal.close();
   } finally {
     await f.close();
   }

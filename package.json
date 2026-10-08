@@ -9,7 +9,7 @@
     "test": "node scripts/test.mjs",
     "test:ui": "node scripts/test.mjs ui",
     "check": "npm run validate:release && npm run typecheck && npm run build && npm test",
-    "test:browser": "node tests/ui.cjs",
+    "test:browser": "node tests/ui.cjs && node tests/theme-matrix.cjs",
     "format": "prettier --write \"src/**/*.ts\" \"tests/*.{ts,js,cjs}\" \"scripts/*.mjs\" styles.css \"*.json\"",
     "test:perf": "node scripts/performance.mjs",
     "package": "npm run build && node scripts/package.mjs",

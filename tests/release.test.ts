@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, copyFileSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { parse } from 'yaml';
 const root = process.cwd();
 const names = ['manifest.json', 'package.json', 'package-lock.json', 'versions.json'];
 const read = (folder: string, name: string) => JSON.parse(readFileSync(join(folder, name), 'utf8'));
@@ -17,6 +18,45 @@ const run = (folder: string, script: string, args: string[] = [], tag = '') =>
     encoding: 'utf8',
     env: { ...process.env, RELEASE_TAG: tag },
   });
+
+test('CI verifies the reviewed bundle before rebuilding on every branch and releases only updater assets', () => {
+  type Workflow = {
+    permissions: { contents: string };
+    jobs: Record<
+      string,
+      {
+        steps: {
+          run?: string;
+          if?: string;
+          name?: string;
+          uses?: string;
+          with?: Record<string, string>;
+        }[];
+      }
+    >;
+  };
+  const check = parse(readFileSync('.github/workflows/check.yml', 'utf8')) as Workflow;
+  assert.deepEqual(Object.keys(check.jobs), ['check']);
+  assert.equal(check.permissions.contents, 'read');
+  const steps = check.jobs.check!.steps;
+  const verification = steps.findIndex((s) => s.run === 'npm run verify:build');
+  assert.ok(verification >= 0 && verification < steps.findIndex((s) => s.run === 'npm run check'));
+  assert.equal(steps[verification]!.if, undefined);
+  assert.ok(steps.every((s) => !s.run || !/git (push|commit)|--method PUT/.test(s.run)));
+  assert.ok(steps.some((s) => s.run === 'npm run test:browser'));
+  const release = parse(readFileSync('.github/workflows/release.yml', 'utf8')) as Workflow;
+  const publish = release.jobs.release!.steps.find((s) => s.name === 'Create release')!.run!;
+  assert.match(publish, /main\.js manifest\.json styles\.css --verify-tag/);
+  assert.match(publish, /--notes-file RELEASE_NOTES\.md/);
+  assert.doesNotMatch(publish, /LICENSE|THIRD_PARTY/);
+  const attest = release.jobs.release!.steps.find((s) => s.name === 'Attest release assets')!;
+  assert.match(attest.uses!, /@[0-9a-f]{40}$/);
+  assert.deepEqual(attest.with!['subject-path']!.trim().split('\n'), [
+    'main.js',
+    'manifest.json',
+    'styles.css',
+  ]);
+});
 test('release metadata validates consistent assets and rejects a wrong tag or compatibility map', () => {
   const folder = fixture();
   try {

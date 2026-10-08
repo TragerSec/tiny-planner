@@ -28,6 +28,10 @@ export class BaseModal extends Modal {
   }
   onOpen(): void {
     this.contentEl.classList.add('tp-modal');
+    this.contentEl.style.setProperty(
+      '--tp-ui-scale',
+      String(this.plugin.normalizeUiScale(this.plugin.settings.uiScalePercent) / 100),
+    );
   }
   onClose(): void {
     this.contentEl.replaceChildren();

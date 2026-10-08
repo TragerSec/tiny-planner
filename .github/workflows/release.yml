@@ -27,6 +27,7 @@ jobs:
       - run: npm audit signatures
       - run: npm run verify:build
       - run: npm run check
+      - run: npm run verify:build
       - run: npx --no-install playwright install --with-deps chromium
       - run: npm run test:browser
       - name: Check release tag
@@ -35,10 +36,11 @@ jobs:
         run: node -e 'if (require("./manifest.json").version !== process.env.RELEASE_TAG) throw new Error("Tag must match manifest version")'
       # Attest the exact assets the Obsidian updater will download.
       - name: Attest release assets
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: |
             main.js
+            manifest.json
             styles.css
       - name: Create release
         env:

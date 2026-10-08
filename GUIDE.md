@@ -8,7 +8,7 @@ An **area** is an ongoing part of life, such as Home or Work. A **project** grou
 
 ## Capture and edit
 
-The single panel button at the top of the left menu collapses or expands navigation, including in Guide. A narrow rail keeps the same button reachable when collapsed. The choice lasts while this planner view is open.
+The single panel button at the top of the left menu collapses or expands navigation, including in Guide. When collapsed, the same chevron moves to the page header and the content uses the full width. The choice lasts while this planner view is open.
 
 Type a task title in quick entry and press Enter or **+**. The date stays beside the title; **Options** reveals project, optional time and status. The sliders button opens the full form. Click a task title to edit its description, status, dates, recurrence, priority and spent minutes.
 

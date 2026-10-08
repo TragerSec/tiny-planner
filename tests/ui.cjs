@@ -142,11 +142,36 @@ const theme = require('./browser-theme.cjs');
         console.log('PASS', name);
       } catch (e) {
         failures.push(name + ': ' + e.message);
-        console.error('FAIL', name, e.message);
+        console.error('FAIL', name, e.stack || e.message);
         const cancel = page.locator('.tp-modal .tp-modal-actions button').first();
         if (await cancel.isVisible().catch(() => false)) await cancel.click().catch(() => {});
       }
     };
+    await check('completion circles have no Obsidian button background or shadow', async () => {
+      const toggle = row('shower').locator('button.tp-check');
+      const appearance = () =>
+        toggle.evaluate((node) => {
+          const style = getComputedStyle(node);
+          return {
+            background: style.backgroundColor,
+            image: style.backgroundImage,
+            shadow: style.boxShadow,
+            border: style.borderTopWidth,
+          };
+        });
+      const expected = {
+        background: 'rgba(0, 0, 0, 0)',
+        image: 'none',
+        shadow: 'none',
+        border: '0px',
+      };
+      assert.deepEqual(await appearance(), expected);
+      await toggle.hover();
+      assert.deepEqual(await appearance(), expected);
+      await toggle.focus();
+      assert.deepEqual(await appearance(), expected);
+      await page.mouse.move(0, 0);
+    });
     await check(
       'navigation has a unique accessible name without a Planner container tooltip',
       async () => {
@@ -1006,6 +1031,9 @@ const theme = require('./browser-theme.cjs');
       assert.equal(await page.locator('[data-metric="tasks"] strong').textContent(), '0');
       assert.equal(await page.locator('[data-metric="projects"] strong').textContent(), '0');
       assert.ok((await page.locator('.tp-stats-empty').textContent()).includes('Нет подходящих'));
+      // Reset lives in the expandable area/project filter panel in 1.0.2.
+      await page.locator('.tp-filters-toggle').click();
+      assert.equal(await page.locator('.tp-filters-toggle').getAttribute('aria-expanded'), 'true');
       await page.getByRole('button', { name: 'Сбросить фильтры', exact: true }).click();
     });
     await check('statistics zero-data state has finite metrics and empty charts', async () => {
@@ -2753,7 +2781,7 @@ const theme = require('./browser-theme.cjs');
           );
         }
         assert.ok(await page.locator('[data-calendar-hide-done]').isVisible());
-      await page.locator('[data-calendar-hide-done]').click();
+        await page.locator('[data-calendar-hide-done]').click();
         assert.equal(
           await page.locator('.tp-task-title').filter({ hasText: 'QA Repeat filter done' }).count(),
           0,
@@ -2782,7 +2810,7 @@ const theme = require('./browser-theme.cjs');
           0,
         );
         assert.ok(await page.locator('[data-calendar-hide-done]').isVisible());
-      await page.locator('[data-calendar-hide-done]').click();
+        await page.locator('[data-calendar-hide-done]').click();
         assert.equal(
           await page.evaluate(() => JSON.stringify(window.tp.plugin.repo.snapshot())),
           notes,
@@ -2934,10 +2962,10 @@ const theme = require('./browser-theme.cjs');
         );
         assert.equal(await cell.locator('.tp-task').count(), 18);
         assert.ok(await page.locator('[data-calendar-hide-done]').isVisible());
-      await page.locator('[data-calendar-hide-done]').click();
+        await page.locator('[data-calendar-hide-done]').click();
         assert.equal(await cell.locator('.tp-task').count(), 17);
         assert.ok(await page.locator('[data-calendar-hide-done]').isVisible());
-      await page.locator('[data-calendar-hide-done]').click();
+        await page.locator('[data-calendar-hide-done]').click();
         assert.equal(await cell.locator('.tp-task').count(), 18);
         for (const width of [600, 320]) {
           await setViewport({ width, height: 900 });
@@ -3208,7 +3236,11 @@ const theme = require('./browser-theme.cjs');
           assert.ok(
             await page
               .locator('.tp-filters')
-              .evaluate((n) => n.nextElementSibling.matches('.tp-filter-panel') && n.nextElementSibling.nextElementSibling.matches('.tp-quick')),
+              .evaluate(
+                (n) =>
+                  n.nextElementSibling.matches('.tp-filter-panel') &&
+                  n.nextElementSibling.nextElementSibling.matches('.tp-quick'),
+              ),
           );
           await toggle.focus();
           await page.keyboard.press('Enter');

@@ -1,4 +1,13 @@
-import { Plugin, PluginSettingTab, Setting, type SettingDefinitionItem, Notice, TFile, TFolder, normalizePath } from 'obsidian';
+import {
+  Plugin,
+  PluginSettingTab,
+  Setting,
+  type SettingDefinitionItem,
+  Notice,
+  TFile,
+  TFolder,
+  normalizePath,
+} from 'obsidian';
 import { Repository } from './services/repository';
 import { TaskService } from './services/tasks';
 import { LegacyImporter } from './services/importer';
@@ -27,16 +36,20 @@ export default class TinyPlanner extends Plugin {
   importer!: LegacyImporter;
   async onload(): Promise<void> {
     const raw: unknown = await this.loadData();
-    const saved: Record<string, unknown> = raw && typeof raw === 'object' && !Array.isArray(raw)
-      ? raw as Record<string, unknown>
-      : {};
+    const saved: Record<string, unknown> =
+      raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
     this.settings = {
       folder: typeof saved.folder === 'string' ? saved.folder : 'Planner',
       language: saved.language === 'en' ? 'en' : 'ru',
-      dailyCapacityMinutes: typeof saved.dailyCapacityMinutes === 'number' && Number.isFinite(saved.dailyCapacityMinutes)
-        ? Math.min(1440, Math.max(0, Math.round(saved.dailyCapacityMinutes)))
-        : 480,
-      dateFormat: saved.dateFormat === 'dmy' || saved.dateFormat === 'mdy' || saved.dateFormat === 'iso' ? saved.dateFormat : 'dmy',
+      dailyCapacityMinutes:
+        typeof saved.dailyCapacityMinutes === 'number' &&
+        Number.isFinite(saved.dailyCapacityMinutes)
+          ? Math.min(1440, Math.max(0, Math.round(saved.dailyCapacityMinutes)))
+          : 480,
+      dateFormat:
+        saved.dateFormat === 'dmy' || saved.dateFormat === 'mdy' || saved.dateFormat === 'iso'
+          ? saved.dateFormat
+          : 'dmy',
       uiScalePercent: this.normalizeUiScale(saved.uiScalePercent),
     };
     this.applyAppearance();
@@ -92,10 +105,12 @@ export default class TinyPlanner extends Plugin {
     return Number.isFinite(n) ? Math.min(115, Math.max(85, Math.round(n))) : 100;
   }
   applyAppearance(): void {
-    document.body.style.setProperty(
-      '--tp-ui-scale',
-      String(this.normalizeUiScale(this.settings.uiScalePercent) / 100),
-    );
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE))
+      if (leaf.view instanceof PlannerView)
+        leaf.view.contentEl.style.setProperty(
+          '--tp-ui-scale',
+          String(this.normalizeUiScale(this.settings.uiScalePercent) / 100),
+        );
   }
   registerCommands(): void {
     const w = words(this.settings.language);
@@ -161,79 +176,106 @@ class PlannerSettingsTab extends PluginSettingTab {
     };
     return [
       {
-        name: w.folder, desc: w.folderHelp,
+        name: w.folder,
+        desc: w.folderHelp,
         render: (setting) => {
-          setting.addText((field) => field.setValue(this.planner.settings.folder).onChange(async (value) => {
-            const path = normalizePath(value.trim());
-            if (!path || path.startsWith('/') || path.split('/').some((part) => part === '..' || part.startsWith('.'))) return;
-            this.planner.settings.folder = path;
-            await this.planner.saveData(this.planner.settings);
-          }));
+          setting.addText((field) =>
+            field.setValue(this.planner.settings.folder).onChange(async (value) => {
+              const path = normalizePath(value.trim());
+              if (
+                !path ||
+                path.startsWith('/') ||
+                path.split('/').some((part) => part === '..' || part.startsWith('.'))
+              )
+                return;
+              this.planner.settings.folder = path;
+              await this.planner.saveData(this.planner.settings);
+            }),
+          );
         },
       },
       {
         name: w.language,
         render: (setting) => {
-          setting.addDropdown((dropdown) => dropdown
-            .addOptions({ ru: 'Русский', en: 'English' })
-            .setValue(this.planner.settings.language)
-            .onChange(async (value) => {
-              this.planner.settings.language = value === 'en' ? 'en' : 'ru';
-              this.planner.registerCommands();
-              await this.planner.saveData(this.planner.settings);
-              refreshViews();
-              this.update();
-            }));
+          setting.addDropdown((dropdown) =>
+            dropdown
+              .addOptions({ ru: 'Русский', en: 'English' })
+              .setValue(this.planner.settings.language)
+              .onChange(async (value) => {
+                this.planner.settings.language = value === 'en' ? 'en' : 'ru';
+                this.planner.registerCommands();
+                await this.planner.saveData(this.planner.settings);
+                refreshViews();
+                this.update();
+              }),
+          );
         },
       },
       {
-        name: w.dateFormat, desc: w.dateFormatHelp,
+        name: w.dateFormat,
+        desc: w.dateFormatHelp,
         render: (setting) => {
-          setting.addDropdown((dropdown) => dropdown
-            .addOptions({ dmy: 'DD.MM.YYYY', mdy: 'MM/DD/YYYY', iso: 'YYYY-MM-DD' })
-            .setValue(this.planner.settings.dateFormat)
-            .onChange(async (value) => {
-              if (value !== 'dmy' && value !== 'mdy' && value !== 'iso') return;
-              this.planner.settings.dateFormat = value;
-              await this.planner.saveData(this.planner.settings);
-              refreshViews();
-            }));
+          setting.addDropdown((dropdown) =>
+            dropdown
+              .addOptions({ dmy: 'DD.MM.YYYY', mdy: 'MM/DD/YYYY', iso: 'YYYY-MM-DD' })
+              .setValue(this.planner.settings.dateFormat)
+              .onChange(async (value) => {
+                if (value !== 'dmy' && value !== 'mdy' && value !== 'iso') return;
+                this.planner.settings.dateFormat = value;
+                await this.planner.saveData(this.planner.settings);
+                refreshViews();
+              }),
+          );
         },
       },
       {
         name: w.capacity,
         render: (setting) => {
-          setting.addText((field) => field
-            .setValue(String(this.planner.settings.dailyCapacityMinutes ?? 480))
-            .onChange(async (value) => {
-              const n = Number(value);
-              if (!value.trim() || !Number.isFinite(n) || n < 0 || n > 1440) return;
-              this.planner.settings.dailyCapacityMinutes = Math.round(n);
-              await this.planner.saveData(this.planner.settings);
-              refreshViews();
-            }));
+          setting.addText((field) =>
+            field
+              .setValue(String(this.planner.settings.dailyCapacityMinutes ?? 480))
+              .onChange(async (value) => {
+                const n = Number(value);
+                if (!value.trim() || !Number.isFinite(n) || n < 0 || n > 1440) return;
+                this.planner.settings.dailyCapacityMinutes = Math.round(n);
+                await this.planner.saveData(this.planner.settings);
+                refreshViews();
+              }),
+          );
         },
       },
       {
-        name: w.uiScale, desc: w.uiScaleHelp,
+        name: w.uiScale,
+        desc: w.uiScaleHelp,
         render: (setting) => {
-          setting.addDropdown((dropdown) => dropdown
-            .addOptions({ '85': '85%', '90': '90%', '95': '95%', '100': '100%', '105': '105%', '110': '110%', '115': '115%' })
-            .setValue(String(this.planner.settings.uiScalePercent ?? 100))
-            .onChange(async (value) => {
-              this.planner.settings.uiScalePercent = this.planner.normalizeUiScale(value);
-              this.planner.applyAppearance();
-              await this.planner.saveData(this.planner.settings);
-              refreshViews();
-            }));
+          setting.addDropdown((dropdown) =>
+            dropdown
+              .addOptions({
+                '85': '85%',
+                '90': '90%',
+                '95': '95%',
+                '100': '100%',
+                '105': '105%',
+                '110': '110%',
+                '115': '115%',
+              })
+              .setValue(String(this.planner.settings.uiScalePercent ?? 100))
+              .onChange(async (value) => {
+                this.planner.settings.uiScalePercent = this.planner.normalizeUiScale(value);
+                this.planner.applyAppearance();
+                await this.planner.saveData(this.planner.settings);
+                refreshViews();
+              }),
+          );
         },
       },
       {
-        name: w.import, desc: w.importText,
+        name: w.import,
+        desc: w.importText,
         render: (setting) => {
-          setting.addButton((button) => button
-            .setButtonText(w.importStart)
-            .onClick(() => new ImportModal(this.planner).open()));
+          setting.addButton((button) =>
+            button.setButtonText(w.importStart).onClick(() => new ImportModal(this.planner).open()),
+          );
         },
       },
     ];

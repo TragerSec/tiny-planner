@@ -152,8 +152,9 @@ function normalizeStatus(value) {
 }
 function strings(value) {
   if (value == null) return [];
-  return (Array.isArray(value) ? value : [value]).map(
-    (v) => typeof v === "object" && v && "path" in v ? String(v.path) : String(v)
+  const entries = Array.isArray(value) ? value : [value];
+  return entries.map(
+    (v) => typeof v === "object" && v !== null && "path" in v ? String(v.path) : String(v)
   );
 }
 function link(value) {
@@ -3596,7 +3597,8 @@ var TaskService = class {
     return this.serial(path, async () => {
       const file = this.file(path);
       let undo;
-      await this.app.fileManager.processFrontMatter(file, (fm) => {
+      await this.app.fileManager.processFrontMatter(file, (raw) => {
+        const fm = raw;
         if (Number(fm.topSchema) > SCHEMA) throw new Error("Cannot edit a future planner schema.");
         if (Number(fm.topSchema) !== SCHEMA || !["task", "project", "area"].includes(String(fm.type)))
           throw new Error("This note is no longer a supported planner note.");
@@ -6572,8 +6574,8 @@ function manual(parent, language, author, version) {
   ]);
   section(t("Capture, dates and time", "\u0414\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u0438\u0435 \u0437\u0430\u0434\u0430\u0447, \u0434\u0430\u0442\u044B \u0438 \u0432\u0440\u0435\u043C\u044F"), [
     t(
-      "The panel button at the top of the left menu collapses or expands navigation. A narrow rail keeps the same button available when collapsed. It remains available in every section, including Guide. The choice lasts while this planner view is open. Enter a title and date in quick entry and press Enter or +. Options reveals project, time and status. The sliders button opens the full form. Click a task title to edit it. A document icon beside the task title indicates a description; hover it for a tooltip. The calendar button beside each date lets you choose a day, month and year, use today or clear the field. Typed dates may omit separators: 07102026 in DD.MM.YYYY means 07.10.2026. Settings choose the date order; ISO dates can be pasted in any mode.",
-      "\u041A\u043D\u043E\u043F\u043A\u0430 \u0432\u0432\u0435\u0440\u0445\u0443 \u043B\u0435\u0432\u043E\u0433\u043E \u043C\u0435\u043D\u044E \u0441\u0432\u043E\u0440\u0430\u0447\u0438\u0432\u0430\u0435\u0442 \u0438 \u0440\u0430\u0441\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u0435\u0433\u043E. \u0412 \u0441\u0432\u0451\u0440\u043D\u0443\u0442\u043E\u043C \u0441\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u0438 \u043E\u0441\u0442\u0430\u0451\u0442\u0441\u044F \u0443\u0437\u043A\u0430\u044F \u043F\u043E\u043B\u043E\u0441\u043A\u0430 \u0441 \u0442\u043E\u0439 \u0436\u0435 \u043A\u043D\u043E\u043F\u043A\u043E\u0439. \u041E\u043D\u0430 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430 \u0432 \u043A\u0430\u0436\u0434\u043E\u043C \u0440\u0430\u0437\u0434\u0435\u043B\u0435, \u0432\u043A\u043B\u044E\u0447\u0430\u044F \u0438\u043D\u0441\u0442\u0440\u0443\u043A\u0446\u0438\u044E. \u0412\u044B\u0431\u043E\u0440 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u0442\u0441\u044F, \u043F\u043E\u043A\u0430 \u043E\u0442\u043A\u0440\u044B\u0442\u0430 \u044D\u0442\u0430 \u0432\u043A\u043B\u0430\u0434\u043A\u0430 \u043F\u043B\u0430\u043D\u043D\u0435\u0440\u0430. \u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0438 \u0434\u0430\u0442\u0443 \u0432 \u0441\u0442\u0440\u043E\u043A\u0443 \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u0438\u044F \u0438 \u043D\u0430\u0436\u043C\u0438\u0442\u0435 Enter \u0438\u043B\u0438 +. \xAB\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B\xBB \u0440\u0430\u0441\u043A\u0440\u044B\u0432\u0430\u044E\u0442 \u043F\u0440\u043E\u0435\u043A\u0442, \u0432\u0440\u0435\u043C\u044F \u0438 \u0441\u0442\u0430\u0442\u0443\u0441. \u041A\u043D\u043E\u043F\u043A\u0430 \u0441 \u043F\u043E\u043B\u0437\u0443\u043D\u043A\u0430\u043C\u0438 \u043E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u043F\u043E\u043B\u043D\u0443\u044E \u0444\u043E\u0440\u043C\u0443. \u041D\u0430\u0436\u043C\u0438\u0442\u0435 \u043D\u0430 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0437\u0430\u0434\u0430\u0447\u0438, \u0447\u0442\u043E\u0431\u044B \u043E\u0442\u043A\u0440\u044B\u0442\u044C \u0444\u043E\u0440\u043C\u0443. \u0417\u043D\u0430\u0447\u043E\u043A \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430 \u0440\u044F\u0434\u043E\u043C \u0441 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435\u043C \u043E\u0442\u043C\u0435\u0447\u0430\u0435\u0442 \u043D\u0430\u043B\u0438\u0447\u0438\u0435 \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u044F; \u043F\u0440\u0438 \u043D\u0430\u0432\u0435\u0434\u0435\u043D\u0438\u0438 \u043F\u043E\u044F\u0432\u043B\u044F\u0435\u0442\u0441\u044F \u043F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0430. \u0417\u043D\u0430\u0447\u043E\u043A \u043A\u0430\u043B\u0435\u043D\u0434\u0430\u0440\u044F \u0440\u044F\u0434\u043E\u043C \u0441 \u0434\u0430\u0442\u043E\u0439 \u043F\u043E\u0437\u0432\u043E\u043B\u044F\u0435\u0442 \u0432\u044B\u0431\u0440\u0430\u0442\u044C \u0434\u0435\u043D\u044C, \u043C\u0435\u0441\u044F\u0446 \u0438 \u0433\u043E\u0434, \u043F\u0435\u0440\u0435\u0439\u0442\u0438 \u043A \u0441\u0435\u0433\u043E\u0434\u043D\u044F\u0448\u043D\u0435\u043C\u0443 \u0434\u043D\u044E \u0438\u043B\u0438 \u043E\u0447\u0438\u0441\u0442\u0438\u0442\u044C \u043F\u043E\u043B\u0435. \u0414\u0430\u0442\u0443 \u043C\u043E\u0436\u043D\u043E \u0432\u0432\u043E\u0434\u0438\u0442\u044C \u0431\u0435\u0437 \u0440\u0430\u0437\u0434\u0435\u043B\u0438\u0442\u0435\u043B\u0435\u0439: 07102026 \u0432 \u0444\u043E\u0440\u043C\u0430\u0442\u0435 \u0414\u0414.\u041C\u041C.\u0413\u0413\u0413\u0413 \u043E\u0437\u043D\u0430\u0447\u0430\u0435\u0442 07.10.2026. \u0424\u043E\u0440\u043C\u0430\u0442 \u043C\u0435\u043D\u044F\u0435\u0442\u0441\u044F \u0432 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430\u0445; \u0434\u0430\u0442\u044B ISO \u043C\u043E\u0436\u043D\u043E \u0432\u0441\u0442\u0430\u0432\u043B\u044F\u0442\u044C \u043F\u0440\u0438 \u043B\u044E\u0431\u043E\u043C \u0444\u043E\u0440\u043C\u0430\u0442\u0435."
+      "The panel button at the top of the left menu collapses or expands navigation. When collapsed, the same chevron moves to the page header and the content uses the full width. It remains available in every section, including Guide. The choice lasts while this planner view is open. Enter a title and date in quick entry and press Enter or +. Options reveals project, time and status. The sliders button opens the full form. Click a task title to edit it. A document icon beside the task title indicates a description; hover it for a tooltip. The calendar button beside each date lets you choose a day, month and year, use today or clear the field. Typed dates may omit separators: 07102026 in DD.MM.YYYY means 07.10.2026. Settings choose the date order; ISO dates can be pasted in any mode.",
+      "\u041A\u043D\u043E\u043F\u043A\u0430 \u0432\u0432\u0435\u0440\u0445\u0443 \u043B\u0435\u0432\u043E\u0433\u043E \u043C\u0435\u043D\u044E \u0441\u0432\u043E\u0440\u0430\u0447\u0438\u0432\u0430\u0435\u0442 \u0438 \u0440\u0430\u0441\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u0435\u0433\u043E. \u0412 \u0441\u0432\u0451\u0440\u043D\u0443\u0442\u043E\u043C \u0441\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u0438 \u0442\u0430 \u0436\u0435 \u043A\u043D\u043E\u043F\u043A\u0430 \u043F\u0435\u0440\u0435\u043C\u0435\u0449\u0430\u0435\u0442\u0441\u044F \u0432 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u044B, \u0430 \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435 \u0437\u0430\u043D\u0438\u043C\u0430\u0435\u0442 \u0432\u0441\u044E \u0448\u0438\u0440\u0438\u043D\u0443. \u041E\u043D\u0430 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430 \u0432 \u043A\u0430\u0436\u0434\u043E\u043C \u0440\u0430\u0437\u0434\u0435\u043B\u0435, \u0432\u043A\u043B\u044E\u0447\u0430\u044F \u0438\u043D\u0441\u0442\u0440\u0443\u043A\u0446\u0438\u044E. \u0412\u044B\u0431\u043E\u0440 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u0442\u0441\u044F, \u043F\u043E\u043A\u0430 \u043E\u0442\u043A\u0440\u044B\u0442\u0430 \u044D\u0442\u0430 \u0432\u043A\u043B\u0430\u0434\u043A\u0430 \u043F\u043B\u0430\u043D\u043D\u0435\u0440\u0430. \u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0438 \u0434\u0430\u0442\u0443 \u0432 \u0441\u0442\u0440\u043E\u043A\u0443 \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u0438\u044F \u0438 \u043D\u0430\u0436\u043C\u0438\u0442\u0435 Enter \u0438\u043B\u0438 +. \xAB\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B\xBB \u0440\u0430\u0441\u043A\u0440\u044B\u0432\u0430\u044E\u0442 \u043F\u0440\u043E\u0435\u043A\u0442, \u0432\u0440\u0435\u043C\u044F \u0438 \u0441\u0442\u0430\u0442\u0443\u0441. \u041A\u043D\u043E\u043F\u043A\u0430 \u0441 \u043F\u043E\u043B\u0437\u0443\u043D\u043A\u0430\u043C\u0438 \u043E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u043F\u043E\u043B\u043D\u0443\u044E \u0444\u043E\u0440\u043C\u0443. \u041D\u0430\u0436\u043C\u0438\u0442\u0435 \u043D\u0430 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0437\u0430\u0434\u0430\u0447\u0438, \u0447\u0442\u043E\u0431\u044B \u043E\u0442\u043A\u0440\u044B\u0442\u044C \u0444\u043E\u0440\u043C\u0443. \u0417\u043D\u0430\u0447\u043E\u043A \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430 \u0440\u044F\u0434\u043E\u043C \u0441 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435\u043C \u043E\u0442\u043C\u0435\u0447\u0430\u0435\u0442 \u043D\u0430\u043B\u0438\u0447\u0438\u0435 \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u044F; \u043F\u0440\u0438 \u043D\u0430\u0432\u0435\u0434\u0435\u043D\u0438\u0438 \u043F\u043E\u044F\u0432\u043B\u044F\u0435\u0442\u0441\u044F \u043F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0430. \u0417\u043D\u0430\u0447\u043E\u043A \u043A\u0430\u043B\u0435\u043D\u0434\u0430\u0440\u044F \u0440\u044F\u0434\u043E\u043C \u0441 \u0434\u0430\u0442\u043E\u0439 \u043F\u043E\u0437\u0432\u043E\u043B\u044F\u0435\u0442 \u0432\u044B\u0431\u0440\u0430\u0442\u044C \u0434\u0435\u043D\u044C, \u043C\u0435\u0441\u044F\u0446 \u0438 \u0433\u043E\u0434, \u043F\u0435\u0440\u0435\u0439\u0442\u0438 \u043A \u0441\u0435\u0433\u043E\u0434\u043D\u044F\u0448\u043D\u0435\u043C\u0443 \u0434\u043D\u044E \u0438\u043B\u0438 \u043E\u0447\u0438\u0441\u0442\u0438\u0442\u044C \u043F\u043E\u043B\u0435. \u0414\u0430\u0442\u0443 \u043C\u043E\u0436\u043D\u043E \u0432\u0432\u043E\u0434\u0438\u0442\u044C \u0431\u0435\u0437 \u0440\u0430\u0437\u0434\u0435\u043B\u0438\u0442\u0435\u043B\u0435\u0439: 07102026 \u0432 \u0444\u043E\u0440\u043C\u0430\u0442\u0435 \u0414\u0414.\u041C\u041C.\u0413\u0413\u0413\u0413 \u043E\u0437\u043D\u0430\u0447\u0430\u0435\u0442 07.10.2026. \u0424\u043E\u0440\u043C\u0430\u0442 \u043C\u0435\u043D\u044F\u0435\u0442\u0441\u044F \u0432 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430\u0445; \u0434\u0430\u0442\u044B ISO \u043C\u043E\u0436\u043D\u043E \u0432\u0441\u0442\u0430\u0432\u043B\u044F\u0442\u044C \u043F\u0440\u0438 \u043B\u044E\u0431\u043E\u043C \u0444\u043E\u0440\u043C\u0430\u0442\u0435."
     ),
     w.appointmentHelp,
     t(
@@ -6684,6 +6686,10 @@ var BaseModal = class extends import_obsidian4.Modal {
   w;
   onOpen() {
     this.contentEl.classList.add("tp-modal");
+    this.contentEl.style.setProperty(
+      "--tp-ui-scale",
+      String(this.plugin.normalizeUiScale(this.plugin.settings.uiScalePercent) / 100)
+    );
   }
   onClose() {
     this.contentEl.replaceChildren();
@@ -7487,6 +7493,10 @@ var PlannerView = class _PlannerView extends import_obsidian5.ItemView {
     this.w = words(this.plugin.settings.language);
     this.contentEl.replaceChildren();
     this.contentEl.classList.add("tp-host");
+    this.contentEl.style.setProperty(
+      "--tp-ui-scale",
+      String(this.plugin.normalizeUiScale(this.plugin.settings.uiScalePercent) / 100)
+    );
     this.shell = el(this.contentEl, "div", "tp-shell");
     this.shell.classList.toggle("tp-sidebar-collapsed", this.sidebarCollapsed);
     const sidebar = el(this.shell, "aside", "tp-sidebar");
@@ -7558,10 +7568,12 @@ var PlannerView = class _PlannerView extends import_obsidian5.ItemView {
       "chevron-left",
       this.w.collapseMenu,
       () => {
+        const focused = menuToggle.ownerDocument.activeElement === menuToggle;
         this.sidebarCollapsed = !this.sidebarCollapsed;
         this.shell.classList.toggle("tp-sidebar-collapsed", this.sidebarCollapsed);
         updateSidebar();
         updateMenuToggle();
+        if (focused) menuToggle.focus();
         if (this.tab === "statistics") this.render();
       },
       "tp-menu-toggle"
@@ -7785,13 +7797,18 @@ var PlannerView = class _PlannerView extends import_obsidian5.ItemView {
       this.projectTooltip();
       this.render();
     });
-    button(filterPanel, this.w.clear, () => {
-      this.area = "";
-      this.project = "";
-      this.query = "";
-      this.dashboardState.page = 0;
-      this.build();
-    }, "tp-text-button tp-filter-clear");
+    button(
+      filterPanel,
+      this.w.clear,
+      () => {
+        this.area = "";
+        this.project = "";
+        this.query = "";
+        this.dashboardState.page = 0;
+        this.build();
+      },
+      "tp-text-button tp-filter-clear"
+    );
     content.insertBefore(filterPanel, quick);
     content.insertBefore(filters, filterPanel);
     this.main = el(content, "main", "tp-main");
@@ -9267,7 +9284,12 @@ var TinyPlanner = class extends import_obsidian6.Plugin {
     return Number.isFinite(n) ? Math.min(115, Math.max(85, Math.round(n))) : 100;
   }
   applyAppearance() {
-    document.body.style.setProperty("--tp-ui-scale", String(this.normalizeUiScale(this.settings.uiScalePercent) / 100));
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE))
+      if (leaf.view instanceof PlannerView)
+        leaf.view.contentEl.style.setProperty(
+          "--tp-ui-scale",
+          String(this.normalizeUiScale(this.settings.uiScalePercent) / 100)
+        );
   }
   registerCommands() {
     const w = words(this.settings.language);
@@ -9323,95 +9345,104 @@ var PlannerSettingsTab = class extends import_obsidian6.PluginSettingTab {
     super(planner.app, planner);
     this.planner = planner;
   }
-    getSettingDefinitions() {
-        const w = words(this.planner.settings.language);
-        const refreshViews = () => {
-            for (const leaf of this.planner.app.workspace.getLeavesOfType(VIEW_TYPE))
-                if (leaf.view instanceof PlannerView)
-                    leaf.view.rebuild();
-        };
-        return [
-            {
-                name: w.folder, desc: w.folderHelp,
-                render: (setting) => {
-                    setting.addText((field) => field.setValue(this.planner.settings.folder).onChange(async (value) => {
-                        const path = normalizePath(value.trim());
-                        if (!path || path.startsWith('/') || path.split('/').some((part) => part === '..' || part.startsWith('.')))
-                            return;
-                        this.planner.settings.folder = path;
-                        await this.planner.saveData(this.planner.settings);
-                    }));
-                },
-            },
-            {
-                name: w.language,
-                render: (setting) => {
-                    setting.addDropdown((dropdown) => dropdown
-                        .addOptions({ ru: 'Русский', en: 'English' })
-                        .setValue(this.planner.settings.language)
-                        .onChange(async (value) => {
-                        this.planner.settings.language = value === 'en' ? 'en' : 'ru';
-                        this.planner.registerCommands();
-                        await this.planner.saveData(this.planner.settings);
-                        refreshViews();
-                        this.update();
-                    }));
-                },
-            },
-            {
-                name: w.dateFormat, desc: w.dateFormatHelp,
-                render: (setting) => {
-                    setting.addDropdown((dropdown) => dropdown
-                        .addOptions({ dmy: 'DD.MM.YYYY', mdy: 'MM/DD/YYYY', iso: 'YYYY-MM-DD' })
-                        .setValue(this.planner.settings.dateFormat)
-                        .onChange(async (value) => {
-                        if (value !== 'dmy' && value !== 'mdy' && value !== 'iso')
-                            return;
-                        this.planner.settings.dateFormat = value;
-                        await this.planner.saveData(this.planner.settings);
-                        refreshViews();
-                    }));
-                },
-            },
-            {
-                name: w.capacity,
-                render: (setting) => {
-                    setting.addText((field) => field
-                        .setValue(String(this.planner.settings.dailyCapacityMinutes ?? 480))
-                        .onChange(async (value) => {
-                        const n = Number(value);
-                        if (!value.trim() || !Number.isFinite(n) || n < 0 || n > 1440)
-                            return;
-                        this.planner.settings.dailyCapacityMinutes = Math.round(n);
-                        await this.planner.saveData(this.planner.settings);
-                        refreshViews();
-                    }));
-                },
-            },
-            {
-                name: w.uiScale, desc: w.uiScaleHelp,
-                render: (setting) => {
-                    setting.addDropdown((dropdown) => dropdown
-                        .addOptions({ '85': '85%', '90': '90%', '95': '95%', '100': '100%', '105': '105%', '110': '110%', '115': '115%' })
-                        .setValue(String(this.planner.settings.uiScalePercent ?? 100))
-                        .onChange(async (value) => {
-                        this.planner.settings.uiScalePercent = this.planner.normalizeUiScale(value);
-                        this.planner.applyAppearance();
-                        await this.planner.saveData(this.planner.settings);
-                        refreshViews();
-                    }));
-                },
-            },
-            {
-                name: w.import, desc: w.importText,
-                render: (setting) => {
-                    setting.addButton((button) => button
-                        .setButtonText(w.importStart)
-                        .onClick(() => new ImportModal(this.planner).open()));
-                },
-            },
-        ];
-    }
+  /** Searchable settings for Obsidian 1.13+, while display() remains for 1.7.2–1.12. */
+  getSettingDefinitions() {
+    const w = words(this.planner.settings.language);
+    const refreshViews = () => {
+      for (const leaf of this.planner.app.workspace.getLeavesOfType(VIEW_TYPE))
+        if (leaf.view instanceof PlannerView) leaf.view.rebuild();
+    };
+    return [
+      {
+        name: w.folder,
+        desc: w.folderHelp,
+        render: (setting) => {
+          setting.addText(
+            (field2) => field2.setValue(this.planner.settings.folder).onChange(async (value) => {
+              const path = (0, import_obsidian6.normalizePath)(value.trim());
+              if (!path || path.startsWith("/") || path.split("/").some((part) => part === ".." || part.startsWith(".")))
+                return;
+              this.planner.settings.folder = path;
+              await this.planner.saveData(this.planner.settings);
+            })
+          );
+        }
+      },
+      {
+        name: w.language,
+        render: (setting) => {
+          setting.addDropdown(
+            (dropdown) => dropdown.addOptions({ ru: "\u0420\u0443\u0441\u0441\u043A\u0438\u0439", en: "English" }).setValue(this.planner.settings.language).onChange(async (value) => {
+              this.planner.settings.language = value === "en" ? "en" : "ru";
+              this.planner.registerCommands();
+              await this.planner.saveData(this.planner.settings);
+              refreshViews();
+              this.update();
+            })
+          );
+        }
+      },
+      {
+        name: w.dateFormat,
+        desc: w.dateFormatHelp,
+        render: (setting) => {
+          setting.addDropdown(
+            (dropdown) => dropdown.addOptions({ dmy: "DD.MM.YYYY", mdy: "MM/DD/YYYY", iso: "YYYY-MM-DD" }).setValue(this.planner.settings.dateFormat).onChange(async (value) => {
+              if (value !== "dmy" && value !== "mdy" && value !== "iso") return;
+              this.planner.settings.dateFormat = value;
+              await this.planner.saveData(this.planner.settings);
+              refreshViews();
+            })
+          );
+        }
+      },
+      {
+        name: w.capacity,
+        render: (setting) => {
+          setting.addText(
+            (field2) => field2.setValue(String(this.planner.settings.dailyCapacityMinutes ?? 480)).onChange(async (value) => {
+              const n = Number(value);
+              if (!value.trim() || !Number.isFinite(n) || n < 0 || n > 1440) return;
+              this.planner.settings.dailyCapacityMinutes = Math.round(n);
+              await this.planner.saveData(this.planner.settings);
+              refreshViews();
+            })
+          );
+        }
+      },
+      {
+        name: w.uiScale,
+        desc: w.uiScaleHelp,
+        render: (setting) => {
+          setting.addDropdown(
+            (dropdown) => dropdown.addOptions({
+              "85": "85%",
+              "90": "90%",
+              "95": "95%",
+              "100": "100%",
+              "105": "105%",
+              "110": "110%",
+              "115": "115%"
+            }).setValue(String(this.planner.settings.uiScalePercent ?? 100)).onChange(async (value) => {
+              this.planner.settings.uiScalePercent = this.planner.normalizeUiScale(value);
+              this.planner.applyAppearance();
+              await this.planner.saveData(this.planner.settings);
+              refreshViews();
+            })
+          );
+        }
+      },
+      {
+        name: w.import,
+        desc: w.importText,
+        render: (setting) => {
+          setting.addButton(
+            (button2) => button2.setButtonText(w.importStart).onClick(() => new ImportModal(this.planner).open())
+          );
+        }
+      }
+    ];
+  }
   display() {
     const w = words(this.planner.settings.language);
     this.containerEl.replaceChildren();

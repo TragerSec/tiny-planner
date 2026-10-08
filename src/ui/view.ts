@@ -215,6 +215,10 @@ export class PlannerView extends ItemView {
     this.w = words(this.plugin.settings.language);
     this.contentEl.replaceChildren();
     this.contentEl.classList.add('tp-host');
+    this.contentEl.style.setProperty(
+      '--tp-ui-scale',
+      String(this.plugin.normalizeUiScale(this.plugin.settings.uiScalePercent) / 100),
+    );
     this.shell = el(this.contentEl, 'div', 'tp-shell');
     this.shell.classList.toggle('tp-sidebar-collapsed', this.sidebarCollapsed);
     const sidebar = el(this.shell, 'aside', 'tp-sidebar');
@@ -286,10 +290,12 @@ export class PlannerView extends ItemView {
       'chevron-left',
       this.w.collapseMenu,
       () => {
+        const focused = menuToggle.ownerDocument.activeElement === menuToggle;
         this.sidebarCollapsed = !this.sidebarCollapsed;
         this.shell.classList.toggle('tp-sidebar-collapsed', this.sidebarCollapsed);
         updateSidebar();
         updateMenuToggle();
+        if (focused) menuToggle.focus();
         if (this.tab === 'statistics') this.render();
       },
       'tp-menu-toggle',
@@ -515,13 +521,18 @@ export class PlannerView extends ItemView {
       this.projectTooltip();
       this.render();
     });
-    button(filterPanel, this.w.clear, () => {
-      this.area = '';
-      this.project = '';
-      this.query = '';
-      this.dashboardState.page = 0;
-      this.build();
-    }, 'tp-text-button tp-filter-clear');
+    button(
+      filterPanel,
+      this.w.clear,
+      () => {
+        this.area = '';
+        this.project = '';
+        this.query = '';
+        this.dashboardState.page = 0;
+        this.build();
+      },
+      'tp-text-button tp-filter-clear',
+    );
     content.insertBefore(filterPanel, quick);
     content.insertBefore(filters, filterPanel);
     this.main = el(content, 'main', 'tp-main');

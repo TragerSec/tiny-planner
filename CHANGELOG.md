@@ -2,6 +2,11 @@
 
 ## 1.0.2
 
+- Restore strict committed-bundle verification on all CI branches without auto-commits; build `main.js` only from TypeScript.
+- Keep transparent completion/title/day controls readable under theme button overrides and preserve keyboard focus when toggling navigation.
+- Fit all seven Week/Month columns in narrow panes, preserve full names and scope interface size to views and modals for pop-outs.
+- Correct regression tests for rebuilt sidebar elements and expandable filters; add a theme/responsive/keyboard matrix.
+
 - Refine sidebar alignment and navigation spacing, and keep utility actions flat without background blocks.
 
 - Reduce typography, card padding and vertical spacing, especially across Day/Week/Month calendar layouts, while keeping full task titles visible.
@@ -11,7 +16,7 @@
 - Align search, quick task entry and date controls to a consistent height and horizontal inset.
 - Align calendar daily load with its date and format duration in hours and minutes; keep unknown estimates discoverable through a small counter with a tooltip.
 - Improve Obsidian Community review compatibility: reduce CSS override and selector complexity, add searchable settings for Obsidian 1.13+ while retaining settings on older versions, and tighten handling of loaded settings.
-- Limit GitHub Release assets to the three files Obsidian installs and add GitHub artifact provenance attestations for the JavaScript and stylesheet.
+- Limit GitHub Release assets to the three files Obsidian installs and add GitHub artifact provenance attestations for all three assets.
 
 ## 1.0.1
 
