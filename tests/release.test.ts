@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, copyFileSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  copyFileSync,
+  readFileSync,
+  writeFileSync,
+  rmSync,
+  chmodSync,
+} from 'node:fs';
 import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { parse } from 'yaml';
@@ -45,7 +53,9 @@ test('CI verifies the reviewed bundle before rebuilding on every branch and rele
   assert.ok(steps.every((s) => !s.run || !/git (push|commit)|--method PUT/.test(s.run)));
   assert.ok(steps.some((s) => s.run === 'npm run test:browser'));
   const release = parse(readFileSync('.github/workflows/release.yml', 'utf8')) as Workflow;
-  const publish = release.jobs.release!.steps.find((s) => s.name === 'Create release')!.run!;
+  const publish = release.jobs.release!.steps.find(
+    (s) => s.name === 'Create or update release',
+  )!.run!;
   assert.match(publish, /main\.js manifest\.json styles\.css --verify-tag/);
   assert.match(publish, /--notes-file RELEASE_NOTES\.md/);
   assert.doesNotMatch(publish, /LICENSE|THIRD_PARTY/);
@@ -56,6 +66,113 @@ test('CI verifies the reviewed bundle before rebuilding on every branch and rele
     'manifest.json',
     'styles.css',
   ]);
+});
+test('release publication creates missing releases, updates existing releases and preserves failures', () => {
+  const workflow = parse(readFileSync('.github/workflows/release.yml', 'utf8'));
+  const publish = workflow.jobs.release.steps.find(
+    (step: { name?: string }) => step.name === 'Create or update release',
+  ).run;
+  assert.equal(workflow.jobs.release.if, 'github.event.deleted != true');
+  assert.equal(workflow.concurrency['cancel-in-progress'], false);
+  assert.match(workflow.concurrency.group, /github.ref/);
+  const folder = mkdtempSync(resolve('.test-build/release-publish-'));
+  const log = join(folder, 'gh-calls.jsonl');
+  const executable = join(folder, 'gh');
+  writeFileSync(
+    executable,
+    `#!/usr/bin/env node
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+fs.appendFileSync(process.env.TP_RELEASE_CALLS, JSON.stringify(args) + '\\n');
+if (args[0] === 'api') {
+  if (process.env.TP_RELEASE_SCENARIO === 'missing') {
+    console.error('gh: Not Found (HTTP 404)'); process.exit(1);
+  }
+  if (process.env.TP_RELEASE_SCENARIO === 'forbidden') {
+    console.error('gh: Resource not accessible (HTTP 403)'); process.exit(1);
+  }
+  if (process.env.TP_RELEASE_SCENARIO === 'network') {
+    console.error('connection timed out'); process.exit(1);
+  }
+} else if (args[1] === process.env.TP_RELEASE_FAIL) {
+  console.error('simulated ' + args[1] + ' failure'); process.exit(1);
+}
+`,
+  );
+  chmodSync(executable, 0o755);
+  const execute = (scenario: string, fail = '') => {
+    writeFileSync(log, '');
+    const result = spawnSync('bash', ['-c', publish], {
+      cwd: folder,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATH: folder + ':' + process.env.PATH,
+        RELEASE_TAG: '1.0.2',
+        GITHUB_REPOSITORY: 'TragerSec/tiny-planner',
+        TP_RELEASE_SCENARIO: scenario,
+        TP_RELEASE_FAIL: fail,
+        TP_RELEASE_CALLS: log,
+      },
+    });
+    const calls = readFileSync(log, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    return { result, calls, operations: calls.slice(1).map((args) => args[1]) };
+  };
+  try {
+    const missing = execute('missing');
+    assert.equal(missing.result.status, 0, missing.result.stderr);
+    assert.deepEqual(missing.operations, ['create']);
+    assert.deepEqual(missing.calls[0], ['api', 'repos/TragerSec/tiny-planner/releases/tags/1.0.2']);
+    assert.ok(missing.calls[1].includes('--verify-tag'));
+    for (const repeat of [0, 1]) {
+      const existing = execute('exists');
+      assert.equal(existing.result.status, 0, `Retry ${repeat}: ${existing.result.stderr}`);
+      assert.deepEqual(existing.operations, ['upload', 'edit']);
+      assert.deepEqual(existing.calls[1], [
+        'release',
+        'upload',
+        '1.0.2',
+        '--repo',
+        'TragerSec/tiny-planner',
+        'main.js',
+        'manifest.json',
+        'styles.css',
+        '--clobber',
+      ]);
+      assert.deepEqual(existing.calls[2], [
+        'release',
+        'edit',
+        '1.0.2',
+        '--repo',
+        'TragerSec/tiny-planner',
+        '--verify-tag',
+        '--title',
+        'Tiny Planner 1.0.2',
+        '--notes-file',
+        'RELEASE_NOTES.md',
+        '--draft=false',
+      ]);
+    }
+    for (const scenario of ['forbidden', 'network']) {
+      const failure = execute(scenario);
+      assert.notEqual(failure.result.status, 0);
+      assert.deepEqual(failure.operations, []);
+    }
+    for (const [scenario, operation, expected] of [
+      ['missing', 'create', ['create']],
+      ['exists', 'upload', ['upload']],
+      ['exists', 'edit', ['upload', 'edit']],
+    ] as const) {
+      const failure = execute(scenario, operation);
+      assert.notEqual(failure.result.status, 0);
+      assert.deepEqual(failure.operations, expected);
+    }
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
 });
 test('release metadata validates consistent assets and rejects a wrong tag or compatibility map', () => {
   const folder = fixture();

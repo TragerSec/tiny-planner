@@ -1,6 +1,6 @@
 # Community review follow-up for 1.0.2
 
-The published `1.0.2` tag points to `ba685d0`. Its release assets match the
+The initial published `1.0.2` tag pointed to `ba685d0`. Its release assets match the
 previously verified local build. GitHub CI and the Community scanner are
 different checks: passing CI did not validate the API's introduction versions.
 
@@ -25,6 +25,16 @@ Obsidian 1.13.1 type declarations, reproduces the published error at
 `src/**/*.ts`. The focused native-DOM and control-regex rules also report no
 findings in the corrected plugin sources. This is not the complete hosted
 Community review service.
+
+## Retrying release publication
+
+The release job creates a release only when the lookup returns HTTP 404. For an
+existing release it uploads the three verified assets with `--clobber`, then
+updates the title and `RELEASE_NOTES.md` description. API permission/network
+errors and failed uploads or edits remain failures; they do not turn the job
+green. Runs for the same tag are serialized, and tag-deletion events do not
+publish a release. The workflow test executes both branches and failed API,
+create, upload and edit commands with a fake CLI; it makes no GitHub writes.
 
 Run the normal build, unit tests and browser matrix before sending the changes
 for a new **Review branch** scan. A hosted scan has not been run for this local
