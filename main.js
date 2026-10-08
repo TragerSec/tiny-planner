@@ -3628,11 +3628,11 @@ var TaskService = class {
     const name = title2.trim();
     if (!name) throw new Error("A title is required.");
     const root = (0, import_obsidian2.normalizePath)(this.folder());
-    if (!root || root.startsWith("/") || /[\x00-\x1f:*?"<>|]/.test(root) || root.split("/").includes("..") || root.split("/").some((x) => x.startsWith(".")))
+    if (!root || root.startsWith("/") || /[:*?"<>|]/.test(root) || Array.from(root).some((char) => char.charCodeAt(0) < 32) || root.split("/").includes("..") || root.split("/").some((x) => x.startsWith(".")))
       throw new Error("Choose a normal folder inside your vault.");
     const directory = `${root}/${type === "task" ? "Tasks" : type === "project" ? "Projects" : "Areas"}`;
     await this.ensureFolder(directory);
-    let slug = name.replace(/[\\/:*?"<>|#^[\]\x00-\x1f]/g, " ").replace(/\s+/g, " ").slice(0, 80).replace(/[. ]+$/, "").trim() || type;
+    let slug = Array.from(name, (char) => char.charCodeAt(0) < 32 ? " " : char).join("").replace(/[\\/:*?"<>|#^[\]]/g, " ").replace(/\s+/g, " ").slice(0, 80).replace(/[. ]+$/, "").trim() || type;
     while (new TextEncoder().encode(slug).length > 160)
       slug = Array.from(slug).slice(0, -1).join("");
     const path = `${directory}/${slug}--${crypto.randomUUID()}.md`;
@@ -5417,11 +5417,7 @@ function messageText(message, language) {
 
 // src/ui/dom.ts
 function el(parent, tag, cls = "", text = "") {
-  const node = parent.ownerDocument.createElement(tag);
-  if (cls) node.className = cls;
-  if (text) node.textContent = text;
-  parent.appendChild(node);
-  return node;
+  return parent.createEl(tag, { cls, text });
 }
 function datedHeading(parent, title2, range2, cls = "", titleClass = "") {
   const heading = el(parent, "div", "tp-stats-heading tp-dated-heading" + (cls ? " " + cls : ""));
@@ -5893,10 +5889,8 @@ function analytics(tasks, projects, today, days, knownProjectPaths = new Set(pro
 // src/ui/dashboard.ts
 var PAGE_SIZE = 12;
 function svgNode(parent, tag, attrs = {}, text = "") {
-  const n = parent.ownerDocument.createElementNS("http://www.w3.org/2000/svg", tag);
-  for (const [key, value] of Object.entries(attrs)) n.setAttribute(key, String(value));
+  const n = parent.createSvg(tag, { attr: attrs });
   if (text) n.textContent = text;
-  parent.appendChild(n);
   return n;
 }
 function dashboard(parent, data, state, w, locale, filtered, refresh, editProject, projectLabel, dateFormat = "dmy") {
@@ -9377,7 +9371,8 @@ var PlannerSettingsTab = class extends import_obsidian6.PluginSettingTab {
               this.planner.registerCommands();
               await this.planner.saveData(this.planner.settings);
               refreshViews();
-              this.update();
+              if ((0, import_obsidian6.requireApiVersion)("1.13.0")) this.update();
+              else this.renderLegacySettings();
             })
           );
         }
@@ -9444,6 +9439,9 @@ var PlannerSettingsTab = class extends import_obsidian6.PluginSettingTab {
     ];
   }
   display() {
+    this.renderLegacySettings();
+  }
+  renderLegacySettings() {
     const w = words(this.planner.settings.language);
     this.containerEl.replaceChildren();
     new import_obsidian6.Setting(this.containerEl).setName(w.folder).setDesc(w.folderHelp).addText(
@@ -9462,7 +9460,7 @@ var PlannerSettingsTab = class extends import_obsidian6.PluginSettingTab {
         await this.planner.saveData(this.planner.settings);
         for (const leaf of this.planner.app.workspace.getLeavesOfType(VIEW_TYPE))
           if (leaf.view instanceof PlannerView) leaf.view.rebuild();
-        this.display();
+        this.renderLegacySettings();
       })
     );
     new import_obsidian6.Setting(this.containerEl).setName(w.dateFormat).setDesc(w.dateFormatHelp).addDropdown(

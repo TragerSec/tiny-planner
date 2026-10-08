@@ -1,5 +1,7 @@
 # Tiny Planner 1.0.2
 
+- Check the host API version before refreshing searchable settings; preserve settings compatibility with Obsidian 1.7.2–1.12.
+- Use Obsidian DOM helpers in the owning window and keep unsafe filename characters out of created paths.
 - Add an interface size setting (85–115%) for planner text, spacing and calendar density.
 - Use a brighter azure-blue accent for To do tasks.
 - Remove the collapsed sidebar rail: one plain chevron moves to the page header and leaves the content full-width.

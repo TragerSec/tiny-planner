@@ -141,7 +141,8 @@ export class TaskService {
     if (
       !root ||
       root.startsWith('/') ||
-      /[\x00-\x1f:*?"<>|]/.test(root) ||
+      /[:*?"<>|]/.test(root) ||
+      Array.from(root).some((char) => char.charCodeAt(0) < 32) ||
       root.split('/').includes('..') ||
       root.split('/').some((x) => x.startsWith('.'))
     )
@@ -149,8 +150,9 @@ export class TaskService {
     const directory = `${root}/${type === 'task' ? 'Tasks' : type === 'project' ? 'Projects' : 'Areas'}`;
     await this.ensureFolder(directory);
     let slug =
-      name
-        .replace(/[\\/:*?"<>|#^[\]\x00-\x1f]/g, ' ')
+      Array.from(name, (char) => (char.charCodeAt(0) < 32 ? ' ' : char))
+        .join('')
+        .replace(/[\\/:*?"<>|#^[\]]/g, ' ')
         .replace(/\s+/g, ' ')
         .slice(0, 80)
         .replace(/[. ]+$/, '')

@@ -18,11 +18,7 @@ export function el<K extends keyof HTMLElementTagNameMap>(
   cls = '',
   text = '',
 ): HTMLElementTagNameMap[K] {
-  const node = parent.ownerDocument.createElement(tag);
-  if (cls) node.className = cls;
-  if (text) node.textContent = text;
-  parent.appendChild(node);
-  return node;
+  return parent.createEl(tag, { cls, text });
 }
 /** Keep contextual dates within their heading instead of separate content rows. */
 export function datedHeading(

@@ -1,5 +1,18 @@
 import manifest from '../manifest.json';
 import { parse, stringify } from 'yaml';
+Node.prototype.createEl = function (tag, { cls = '', text = '' } = {}) {
+  const node = this.ownerDocument.createElement(tag);
+  node.className = cls;
+  node.textContent = text;
+  this.appendChild(node);
+  return node;
+};
+Node.prototype.createSvg = function (tag, { attr = {} } = {}) {
+  const node = this.ownerDocument.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [key, value] of Object.entries(attr)) node.setAttribute(key, String(value));
+  this.appendChild(node);
+  return node;
+};
 class TFile {
   constructor(path) {
     this.path = path;
@@ -233,6 +246,14 @@ function setIcon(n, icon) {
 }
 const notices = [];
 const mock = {
+  requireApiVersion: (minimum) => {
+    const actual = [1, 13, 1];
+    const required = minimum.split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+      if (actual[i] !== required[i]) return actual[i] > required[i];
+    }
+    return true;
+  },
   TFile,
   TFolder,
   ItemView,

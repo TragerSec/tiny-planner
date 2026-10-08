@@ -2,6 +2,8 @@
 
 ## 1.0.2
 
+- Guard the Obsidian 1.13 settings update API explicitly while keeping the 1.7.2 settings fallback; verify language changes on a host without `update()`.
+- Use owning-node Obsidian DOM helpers and preserve control-character filename protection without control-character regular expressions.
 - Restore strict committed-bundle verification on all CI branches without auto-commits; build `main.js` only from TypeScript.
 - Keep transparent completion/title/day controls readable under theme button overrides and preserve keyboard focus when toggling navigation.
 - Fit all seven Week/Month columns in narrow panes, preserve full names and scope interface size to views and modals for pop-outs.

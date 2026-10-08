@@ -912,6 +912,38 @@ test('declarative settings remain searchable alongside the legacy settings tab',
   }
 });
 
+test('settings language changes work without the Obsidian 1.13 update API', async () => {
+  const previousVersion = mock.apiVersion;
+  mock.apiVersion = '1.7.2';
+  const f = await fixture();
+  try {
+    const tab = (f.plugin as any).settingTabs[0];
+    tab.update = undefined; // The method does not exist on supported older hosts.
+    tab.display();
+    const controls = [...tab.containerEl.querySelectorAll('select')] as HTMLSelectElement[];
+    change(
+      controls.find((s) => s.options[0]?.value === 'ru')!,
+      'en',
+    );
+    await tick();
+    assert.equal(f.plugin.settings.language, 'en');
+    assert.equal((f.plugin as any).data.language, 'en');
+    assert.ok(tab.containerEl.textContent.includes(words('en').folder));
+    // Exercise the fallback even if a caller invokes a modern render callback.
+    const language = tab.getSettingDefinitions()[1];
+    tab.containerEl.replaceChildren();
+    language.render(new mock.Setting(tab.containerEl));
+    change(tab.containerEl.querySelector('select'), 'ru');
+    await tick();
+    assert.equal(f.plugin.settings.language, 'ru');
+    assert.equal((f.plugin as any).data.language, 'ru');
+    assert.ok(tab.containerEl.textContent.includes(words('ru').folder));
+  } finally {
+    mock.apiVersion = previousVersion;
+    await f.close();
+  }
+});
+
 test('UI settings date dropdown persists selection and rebuilds open views', async () => {
   const f = await fixture();
   try {

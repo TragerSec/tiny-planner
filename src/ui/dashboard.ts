@@ -18,10 +18,8 @@ export function svgNode<K extends keyof SVGElementTagNameMap>(
   attrs: Record<string, string | number> = {},
   text = '',
 ): SVGElementTagNameMap[K] {
-  const n = parent.ownerDocument.createElementNS('http://www.w3.org/2000/svg', tag);
-  for (const [key, value] of Object.entries(attrs)) n.setAttribute(key, String(value));
+  const n = parent.createSvg(tag, { attr: attrs });
   if (text) n.textContent = text;
-  parent.appendChild(n);
   return n;
 }
 

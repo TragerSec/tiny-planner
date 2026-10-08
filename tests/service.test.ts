@@ -158,6 +158,20 @@ test('invalid dates, negative minutes, missing title and unsafe folder are rejec
     /inside/,
   );
 });
+test('all ASCII control characters are rejected in folders and removed from filenames', async () => {
+  const { app, repo, service } = fixture();
+  for (let code = 0; code < 32; code++) {
+    const control = String.fromCharCode(code);
+    await assert.rejects(
+      () => new TaskService(app, repo, () => `Planner${control}Unsafe`).createTask(draft()),
+      /inside/,
+    );
+    const file = await service.createTask(draft({ title: `A${control}B` }));
+    assert.ok(file.name.startsWith('A B--'), `Control character ${code} remains in filename`);
+    assert.equal(frontmatter(await app.vault.read(file)).title, `A${control}B`);
+  }
+});
+
 test('edits preserve note body and unrelated frontmatter', async () => {
   const { app, repo, service } = fixture();
   const f = await put(

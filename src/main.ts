@@ -7,6 +7,7 @@ import {
   TFile,
   TFolder,
   normalizePath,
+  requireApiVersion,
 } from 'obsidian';
 import { Repository } from './services/repository';
 import { TaskService } from './services/tasks';
@@ -206,7 +207,8 @@ class PlannerSettingsTab extends PluginSettingTab {
                 this.planner.registerCommands();
                 await this.planner.saveData(this.planner.settings);
                 refreshViews();
-                this.update();
+                if (requireApiVersion('1.13.0')) this.update();
+                else this.renderLegacySettings();
               }),
           );
         },
@@ -281,6 +283,9 @@ class PlannerSettingsTab extends PluginSettingTab {
     ];
   }
   display(): void {
+    this.renderLegacySettings();
+  }
+  private renderLegacySettings(): void {
     const w = words(this.planner.settings.language);
     this.containerEl.replaceChildren();
     new Setting(this.containerEl)
@@ -309,7 +314,7 @@ class PlannerSettingsTab extends PluginSettingTab {
           await this.planner.saveData(this.planner.settings);
           for (const leaf of this.planner.app.workspace.getLeavesOfType(VIEW_TYPE))
             if (leaf.view instanceof PlannerView) leaf.view.rebuild();
-          this.display();
+          this.renderLegacySettings();
         }),
     );
     new Setting(this.containerEl)
