@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.3
+
+- Reissue the verified 1.0.2 corrections under a distinct version for a new Community release review; retain the same runtime code, interface and data format.
+- Preserve strict source/bundle verification, compatibility with Obsidian 1.7.2 and safe retries of GitHub Release publication.
+- Replace obsolete bundle-synchronization instructions with the verified-source publication procedure.
+
 ## 1.0.2
 
 - Guard the Obsidian 1.13 settings update API explicitly while keeping the 1.7.2 settings fallback; verify language changes on a host without `update()`.

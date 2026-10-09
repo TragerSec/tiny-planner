@@ -1,6 +1,6 @@
 {
   "name": "tiny-planner",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "A local task, project and expense planner for Obsidian.",
   "scripts": {

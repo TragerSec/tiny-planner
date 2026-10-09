@@ -1,4 +1,4 @@
-# Community review follow-up for 1.0.2
+# Community review follow-up for 1.0.3
 
 The initial published `1.0.2` tag pointed to `ba685d0`. Its release assets match the
 previously verified local build. GitHub CI and the Community scanner are
@@ -36,11 +36,19 @@ green. Runs for the same tag are serialized, and tag-deletion events do not
 publish a release. The workflow test executes both branches and failed API,
 create, upload and edit commands with a fake CLI; it makes no GitHub writes.
 
-Run the normal build, unit tests and browser matrix before sending the changes
-for a new **Review branch** scan. A hosted scan has not been run for this local
-correction. Publishing a newer version, changing the existing tag or replacing
-release assets requires the maintainer's decision; this correction keeps the
-version at 1.0.2 and does not mutate the published release.
+The corrected `1.0.2` tag points to `5b06ef8`. Its `src/main.ts` and runtime
+bundle match the corrected sources on `main` at `d15d7df`. The maintainer's
+branch preview completed without the unsupported-API error, but the release
+review still displayed the original error at line 209. In the corrected source
+line 209 is `refreshViews()` and `update()` is guarded on line 210. Retained
+review results are a likely explanation; the hosted service's internal state
+has not been inspected.
+
+Version `1.0.3` was authorized by the maintainer to submit the corrected build
+under a distinct release version. Runtime code, CSS and data format are unchanged
+from the corrected `1.0.2`. The normal build, unit tests and browser matrix must
+pass before publication. Local preparation does not publish a release, modify
+historical tags or establish the outcome of a future hosted Community review.
 
 Official references:
 

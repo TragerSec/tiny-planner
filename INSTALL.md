@@ -20,18 +20,17 @@ After listing approval, search for Tiny Planner in **Settings → Community plug
 
 Create an area and a project, then add a task in Today or Inbox. Click a title to edit its details. Choose your interface language and date format in settings. Read the built-in Guide or [GUIDE.md](GUIDE.md) for behavior and controls.
 
-## Committing version 1.0.2 without building on your computer
+## Publishing version 1.0.3 from the verified source archive
 
-Push the full source tree to the repository default branch. GitHub Actions first runs
-all quality checks using the TypeScript-generated `main.js`. After checks succeed,
-a separate, write-scoped job **sync-generated-bundle** rebuilds and commits the
-exact generated `main.js` to the default branch, only if it differs. The write
-permission is never granted to pull-request jobs. Wait for both Actions jobs
-to succeed, and confirm that the generated bundle commit is visible, **before**
-creating the release tag `1.0.2`. The tag-triggered Release workflow retains
-strict `npm run verify:build` and does not rewrite release files.
+Upload the full contents of the verified source archive to the repository default
+branch, including the generated `main.js`, metadata, tests and workflows. GitHub
+Actions checks that the committed bundle exactly matches the TypeScript sources
+before running all quality checks. Wait for the check workflow to succeed before
+creating a new tag named exactly `1.0.3` on that checked commit.
 
-If the branch is protected or GitHub Actions cannot commit, the synchronization
-job will fail explicitly. Enable permission for Actions to write repository
-contents or update `main.js` using a trusted GitHub build; do not disable
-`verify:build`.
+The Release workflow repeats the build verification and tests, then publishes
+only `main.js`, `manifest.json` and `styles.css`, with the description from
+`RELEASE_NOTES.md`. It handles a retry of the same release without creating a
+duplicate. CI does not automatically commit bundles. Do not edit generated
+`main.js` by hand or disable `verify:build`; a mismatch requires a fresh build
+from the sources. Keep historical tags unchanged.

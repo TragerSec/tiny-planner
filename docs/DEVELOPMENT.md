@@ -10,7 +10,7 @@ npm run package
 
 `npm run verify:build` rebuilds the source, compares it byte-for-byte with committed `main.js`, and restores the reviewed file if verification fails. Run it after building and before committing/publishing.
 
-`npm run validate:release` checks manifest/package/lockfile versions, the compatibility map and optional release tag. The 1.0.2 metadata is already set; do not run the version bump script while preparing this release.
+`npm run validate:release` checks manifest/package/lockfile versions, the compatibility map and optional release tag. The 1.0.3 metadata is already set; do not run the version bump script while preparing this release.
 
 The production bundle externally imports only `obsidian`. Keep the guarded engine in `vendor/rrule`; do not replace its import with the unguarded npm entry. Dependency notices are included in the bundle banner. The npm package remains pinned for provenance.
 
