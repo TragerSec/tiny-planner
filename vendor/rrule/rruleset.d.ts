@@ -15,8 +15,8 @@ export declare class RRuleSet extends RRule {
      * @constructor
      */
     constructor(noCache?: boolean);
-    dtstart: any;
-    tzid: any;
+    dtstart: (value?: Date) => Date | undefined;
+    tzid: (value?: string) => string | undefined;
     _iter<M extends QueryMethodTypes>(iterResult: IterResult<M>): IterResultType<M>;
     /**
      * Adds an RRule to the set

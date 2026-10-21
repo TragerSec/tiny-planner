@@ -3382,9 +3382,14 @@ test('calendar discloses metadata via ellipsis and range marks have no completio
     assert.ok(menu.querySelector('.tp-planned-minutes'));
     assert.ok(row.querySelector('.tp-task-heading .tp-kind-badge'));
     assert.ok(row.querySelector('.tp-task-heading .tp-priority'));
+    assert.equal(row.classList.contains('tp-card-expanded'), false);
     menu.open = true;
+    await tick();
+    assert.equal(row.classList.contains('tp-card-expanded'), true);
     menu.dispatchEvent(new f.dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await tick();
     assert.equal(menu.open, false);
+    assert.equal(row.classList.contains('tp-card-expanded'), false);
     const mark = f.root.querySelector(
       `[data-day="${addDays(day(), 1)}"] .tp-calendar-continuation`,
     )!;

@@ -1,4 +1,5 @@
 import type { PeriodDays } from './model';
+import { scalarText } from './model';
 const pad = (n: number) => String(n).padStart(2, '0');
 export function day(date = new Date()): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
@@ -8,7 +9,7 @@ export function dateKey(value: unknown): string {
     if (!Number.isFinite(value.valueOf())) return '';
     value = value.toISOString();
   }
-  const s = String(value ?? '').slice(0, 10);
+  const s = scalarText(value).slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
   const d = new Date(`${s}T12:00:00Z`);
   return !Number.isNaN(d.valueOf()) && d.toISOString().slice(0, 10) === s ? s : '';

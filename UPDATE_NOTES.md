@@ -1,3 +1,7 @@
+# Tiny Planner 1.0.5 — Obsidian review fixes
+
+The previously published 1.0.4 tag is not rewritten. This patch adds the official recommended source lint to CI and fixes the reported static styles, DOM helpers, unnecessary cast, declaration types and :has selectors. Full details and verification are in docs/FINAL_AUDIT.md (AUDIT.md in the install archive).
+
 # Tiny Planner 1.0.4 — local release candidate
 
 Prepared from the supplied GitHub 1.0.3 source, with the requested mobile/calendar work and the follow-up fixes below. The version is 1.0.4 in manifest, package, lockfile and versions.json. No GitHub push, tag or release publication has been performed.
@@ -41,3 +45,7 @@ Final audit: choice labels follow programmatic changes without firing business h
 Workload now counts each active occurrence when several repeats share a moved date, and includes explicitly reopened occurrences in legacy closed series. Added regression coverage for estimates, missing estimates, overload and closed history.
 
 Calendar cards now retain assigned HH:mm time before the title in Minimal and Detailed views, including continuation marks. No duplicate time appears in the expanded metadata, and untimed tasks keep their previous appearance.
+
+CI follow-up: update the appointment browser scenario to verify the visible calendar title time instead of the removed metadata element. Full npm run test:browser passes (81 UI, 16 theme and 36 mobile cases), with diagnostic captures enabled. Runtime assets are unchanged.
+
+1.0.5 final validation under Node 22.23.3: official recommended source lint and vendor declarations have zero errors/warnings; 264 tests; full browser chain 81+16+36 passed without skipping captures. A clean archive install passed both lockfile installations, pre-build verification, complete check and post-build verification. Both dependency audits report zero known advisories. Three scoped CSS important declarations and vault discovery are intentionally documented recommendations, not claimed as a clean remote scanner result.

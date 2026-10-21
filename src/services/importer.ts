@@ -1,5 +1,5 @@
 import { App, TFile } from 'obsidian';
-import { FM, link, strings, title, Resolution } from '../core/model';
+import { FM, link, strings, title, scalarText, Resolution } from '../core/model';
 import { day, dateKey } from '../core/dates';
 import { normalizeTask } from '../core/normalize';
 import { frontmatter, Repository } from './repository';
@@ -36,7 +36,7 @@ export class LegacyImporter {
       const header = text.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)?.[1] || '';
       if (!/^(Tasks|Projects)\//i.test(file.path) && !header.includes('topLegacySource')) continue;
       const fm = frontmatter(text);
-      if (fm.topLegacySource) imported.set(String(fm.topLegacySource), file.path);
+      if (scalarText(fm.topLegacySource)) imported.set(scalarText(fm.topLegacySource), file.path);
       if (fm.topSchema || !/^(Tasks|Projects)\//i.test(file.path)) continue;
       const isProject = fm.type === 'project' || file.basename === '_project';
       const isTask =
@@ -54,7 +54,7 @@ export class LegacyImporter {
         result.skipped++;
         continue;
       }
-      const name = String(entry.fm.area || entry.file.path.split('/')[1] || 'General');
+      const name = scalarText(entry.fm.area) || entry.file.path.split('/')[1] || 'General';
       let area = areas.get(name);
       if (!area) {
         const f = await this.service.createNote('area', name, {});
@@ -110,8 +110,8 @@ export class LegacyImporter {
           );
           continue;
         }
-        const start = new Date(String(time.startTime)),
-          end = new Date(String(time.endTime));
+        const start = new Date(scalarText(time.startTime)),
+          end = new Date(scalarText(time.endTime));
         const minutes = Math.round((end.valueOf() - start.valueOf()) / 60000);
         if (Number.isFinite(minutes) && minutes > 0) {
           if (normalized.recurrence) {

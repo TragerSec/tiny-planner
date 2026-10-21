@@ -31,8 +31,8 @@ export class BaseModal extends Modal {
     this.contentEl.lang = this.plugin.settings.language;
     const grow = () => {
       for (const area of this.contentEl.querySelectorAll<HTMLTextAreaElement>('textarea')) {
-        area.style.height = 'auto';
-        area.style.height = `${Math.max(96, area.scrollHeight + 2)}px`;
+        area.setCssStyles({ height: 'auto' });
+        area.setCssStyles({ height: `${Math.max(96, area.scrollHeight + 2)}px` });
       }
     };
     this.contentEl.addEventListener('input', grow);

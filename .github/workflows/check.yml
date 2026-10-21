@@ -19,8 +19,11 @@ jobs:
           node-version: '22'
           package-manager-cache: false
       - run: npm ci --ignore-scripts
+      - run: npm ci --prefix tools/obsidian-lint --ignore-scripts
       - run: npm audit --audit-level=low
+      - run: npm audit --prefix tools/obsidian-lint --audit-level=low
       - run: npm audit signatures
+      - run: npm audit signatures --prefix tools/obsidian-lint
       # Verify before any command that can rebuild and overwrite main.js.
       - run: npm run verify:build
       - run: npm run check

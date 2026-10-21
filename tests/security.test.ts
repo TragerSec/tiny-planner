@@ -120,11 +120,16 @@ test('vendored runtime is byte-identical to the verified upstream package apart 
   for (const file of walk('vendor/rrule')) {
     const rel = path.relative('vendor/rrule', file).replaceAll('\\', '/');
     if (!/\.(js|d\.ts)$/.test(rel) || rel === 'iter/index.js') continue;
-    assert.deepEqual(
-      fs.readFileSync(file),
-      fs.readFileSync(path.join('node_modules/rrule/dist/esm', rel)),
-      rel,
-    );
+    const bytes = fs.readFileSync(file);
+    const upstreamBytes = fs.readFileSync(path.join('node_modules/rrule/dist/esm', rel));
+    if (rel === 'rruleset.d.ts') {
+      const restored = String(bytes)
+        .replace('dtstart: (value?: Date) => Date | undefined;', 'dtstart: any;')
+        .replace('tzid: (value?: string) => string | undefined;', 'tzid: any;');
+      assert.equal(restored, String(upstreamBytes), rel);
+    } else if (rel === 'helpers.d.ts') {
+      assert.equal(String(bytes).replace('isArray: (arg: unknown) => arg is unknown[];', 'isArray: (arg: any) => arg is any[];'), String(upstreamBytes), rel);
+    } else assert.deepEqual(bytes, upstreamBytes, rel);
   }
   const iterator = fs.readFileSync('vendor/rrule/iter/index.js', 'utf8');
   const additions = [

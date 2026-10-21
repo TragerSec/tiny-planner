@@ -13,6 +13,16 @@ const task = (fm: Record<string, unknown> = {}) =>
     ...fm,
   });
 const routine = (fm: Record<string, unknown> = {}) => task({ recurrence: 'FREQ=DAILY', ...fm });
+test('malformed YAML collections do not stringify into titles or dates and recurrence stays flagged', () => {
+  const malformed = { toString() { throw new Error('Must not stringify a YAML collection'); } };
+  assert.equal(dateKey(malformed), '');
+  const record = task({ title: malformed, taskType: malformed, recurrence: malformed });
+  assert.equal(record.title, 'Example');
+  assert.equal(record.kind, 'task');
+  assert.ok(record.recurrence);
+  assert.ok(record.unsupportedRepeat);
+  assert.equal(dateKey(new Date('2026-10-21T12:00:00Z')), '2026-10-21');
+});
 test('completed daily occurrence remains green state on today and tomorrow stays open', () => {
   const t = routine({ topOccurrences: { '2026-10-02': { status: 'done', minutes: 12 } } });
   const [today, tomorrow] = expand(t, '2026-10-02', '2026-10-03');

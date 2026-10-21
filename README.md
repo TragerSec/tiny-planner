@@ -116,6 +116,7 @@ Use **Node.js 22+** and the committed lockfile:
 
 ```sh
 npm ci --ignore-scripts
+npm ci --prefix tools/obsidian-lint --ignore-scripts
 npm run verify:build
 npm run check
 npm run verify:build
@@ -124,7 +125,7 @@ npm run test:browser
 npm run package
 ```
 
-`check` validates release metadata, checks TypeScript, builds `main.js` and runs automated tests. `verify:build` rejects a stale committed runtime. `package` writes installation files to `dist/tiny-planner/`. Keep the guarded `vendor/rrule` engine and its pinned provenance dependency.
+`check` validates release metadata, runs the pinned official Obsidian recommended linter (zero warnings), checks TypeScript, builds `main.js` and runs automated tests. `verify:build` rejects a stale committed runtime. `package` writes installation files to `dist/tiny-planner/`. Keep the guarded `vendor/rrule` engine and its pinned provenance dependency.
 
 GitHub checks pushes and pull requests. Pushing an exact version tag triggers the Release workflow, including build consistency and browser checks.
 
@@ -143,3 +144,5 @@ Run relevant checks for contributions. Preserve local operation, unknown note fi
 [MIT](LICENSE). Bundled recurrence code retains its licenses in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [vendor/rrule](vendor/rrule/README.md).
 
 Assigned task time (HH:mm) stays visible before the title in both Minimal and Detailed calendar views, including work, deadline and continuation cards. Untimed tasks show no placeholder. This is the optional local appointment time, not the estimated duration.
+
+Developer checks use an isolated, pinned `tools/obsidian-lint` toolchain; none of it is included in the installed plugin. Initial indexing enumerates Markdown notes across the vault to find `topSchema: 1` records, including notes outside the creation folder. It does not send paths or contents anywhere.

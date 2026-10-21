@@ -1,7 +1,8 @@
 import { RRule } from '../../vendor/rrule';
 import { addDays, dateKey, distance, utc } from './dates';
+import { scalarText } from './model';
 export function normalizeRule(raw: unknown): string {
-  const s = String(raw ?? '').trim();
+  const s = scalarText(raw, raw == null ? '' : '[invalid recurrence]').trim();
   const aliases: Record<string, string> = {
     daily: 'FREQ=DAILY',
     weekly: 'FREQ=WEEKLY',

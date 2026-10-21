@@ -109,8 +109,18 @@ export class PlannerView extends ItemView {
   private readonly dismissCardMenus = (event: Event): void => {
     if (this.calendarDetailed) return;
     for (const menu of this.contentEl.querySelectorAll<HTMLDetailsElement>('.tp-card-menu[open]'))
-      if (!menu.contains(event.target as Node | null)) menu.open = false;
+      if (!menu.contains(event.target as Node | null)) this.setCardMenu(menu, false);
   };
+  private setCardMenu(menu: HTMLDetailsElement, open: boolean): void {
+    if (open && !this.calendarDetailed)
+      for (const other of this.main.querySelectorAll<HTMLDetailsElement>('.tp-card-menu[open]'))
+        if (other !== menu) {
+          other.open = false;
+          other.closest('.tp-task-compact')?.classList.remove('tp-card-expanded');
+        }
+    if (menu.open !== open) menu.open = open;
+    menu.closest('.tp-task-compact')?.classList.toggle('tp-card-expanded', open);
+  }
   private quickDraft?: {
     title: string;
     project: string;
@@ -1688,20 +1698,23 @@ export class PlannerView extends ItemView {
     if (compact) {
       const menu = el(row, 'details', 'tp-card-menu');
       menu.open = this.calendarDetailed;
+      row.classList.toggle('tp-card-expanded', menu.open);
       const summary = el(menu, 'summary', 'tp-card-menu-toggle');
       summary.title = this.w.taskDetails;
       summary.setAttribute('aria-label', `${this.w.taskDetails}: ${item.task.title}`);
       setIcon(summary, 'ellipsis-vertical');
+      summary.addEventListener('click', (event) => {
+        // Keep the native details state and its styling in the same interaction.
+        event.preventDefault();
+        if (!this.calendarDetailed) this.setCardMenu(menu, !menu.open);
+      });
       menu.addEventListener('toggle', () => {
-        if (menu.isConnected && menu.open && !this.calendarDetailed)
-          this.main.querySelectorAll<HTMLDetailsElement>('.tp-card-menu[open]').forEach((other) => {
-            if (other !== menu) other.open = false;
-          });
+        if (menu.isConnected) this.setCardMenu(menu, menu.open);
       });
       menu.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && !this.calendarDetailed) {
           event.preventDefault();
-          menu.open = false;
+          this.setCardMenu(menu, false);
           summary.focus();
         }
       });

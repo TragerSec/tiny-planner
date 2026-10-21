@@ -1,6 +1,6 @@
 # rrule 2.8.1 · guarded runtime
 
-This is the published `rrule@2.8.1` `dist/esm` JavaScript and declarations, copied from the lockfile-verified package without source maps. LICENSE is the upstream LICENCE. All upstream files except `iter/index.js` are byte-identical to the installed package.
+This is the published `rrule@2.8.1` `dist/esm` JavaScript and declarations, copied from the lockfile-verified package without source maps. LICENSE is the upstream LICENCE. All executable upstream files except `iter/index.js` are byte-identical to the installed package. In `rruleset.d.ts`, the two upstream `any` fields for the dtstart/tzid getter-setters have precise optional Date/string signatures. The integrity test reverses exactly those three declaration edits before comparing against upstream; In `helpers.d.ts`, the array guard uses `unknown` instead of `any`. No runtime change is involved.
 
 The only engine modification is in `iter/index.js`:
 

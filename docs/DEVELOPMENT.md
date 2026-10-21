@@ -4,13 +4,14 @@ Use Node.js 22+ and the committed lockfile. No Node runtime is needed inside Obs
 
 ```sh
 npm ci --ignore-scripts
+npm ci --prefix tools/obsidian-lint --ignore-scripts
 npm run check
 npm run package
 ```
 
 `npm run verify:build` rebuilds the source, compares it byte-for-byte with committed `main.js`, and restores the reviewed file if verification fails. Run it after building and before committing/publishing.
 
-`npm run validate:release` checks manifest/package/lockfile versions, the compatibility map and optional release tag. The 1.0.4 metadata is already set; do not run the version bump script while preparing this release.
+`npm run validate:release` checks manifest/package/lockfile versions, the compatibility map and optional release tag. The 1.0.5 metadata is already set; do not run the version bump script while preparing this release.
 
 The production bundle externally imports only `obsidian`. Keep the guarded engine in `vendor/rrule`; do not replace its import with the unguarded npm entry. Dependency notices are included in the bundle banner. The npm package remains pinned for provenance.
 
@@ -48,3 +49,9 @@ Update CHANGELOG and RELEASE_NOTES before creating the next tag.
 ## Large-fixture measurements
 
 `npm run test:perf` generates 50,000 local fixture notes (5,000 planner tasks), exercises repository load and recurrence selectors, and measures representative DOM rendering in jsdom. Generated notes and results live in `.perf-work/`; exclude that directory from archives and version control. Measurements are optional development evidence and are not included in the release source archive. These are container/Node measurements, not real Obsidian/device benchmarks.
+
+## Official Obsidian lint
+
+`npm run lint:obsidian` runs the full official `eslint-plugin-obsidianmd` recommended configuration on first-party TypeScript with zero warnings allowed. The plugin name is configured as a brand for sentence-case checking. Upstream declarations have a separate no-explicit-any check and exact provenance tests. The tools have their own pinned lockfile and are installed with `npm ci --prefix tools/obsidian-lint --ignore-scripts`; both workflows install and audit them before `check`. Their pinned moment override removes the known advisory in the lint toolchain.
+
+Three narrow CSS `!important` declarations are intentional: normal specificity cannot override a theme declaring the same properties important. Browser tests exercise that case. All column gaps use the Grid/Flex `gap` shorthand, and expanded card state uses `.tp-card-expanded`, without `:has`.

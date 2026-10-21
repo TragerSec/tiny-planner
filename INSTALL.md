@@ -20,13 +20,13 @@ After listing approval, search for Tiny Planner in **Settings → Community plug
 
 Create an area and a project, then add a task in Today or Inbox. Click a title to edit its details. Choose your interface language and date format in settings. Read the built-in Guide or [GUIDE.md](GUIDE.md) for behavior and controls.
 
-## Publishing version 1.0.4 from the verified source archive
+## Publishing version 1.0.5 from the verified source archive
 
 Upload the full contents of the verified source archive to the repository default
 branch, including the generated `main.js`, metadata, tests and workflows. GitHub
 Actions checks that the committed bundle exactly matches the TypeScript sources
 before running all quality checks. Wait for the check workflow to succeed before
-creating a new tag named exactly `1.0.4` on that checked commit.
+creating a new tag named exactly `1.0.5` on that checked commit.
 
 The Release workflow repeats the build verification and tests, then publishes
 only `main.js`, `manifest.json` and `styles.css`, with the description from

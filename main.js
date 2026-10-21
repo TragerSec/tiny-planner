@@ -140,8 +140,12 @@ function isActive(status) {
 }
 var SCHEMA = 1;
 var TERMINAL = /* @__PURE__ */ new Set(["done", "failed"]);
+function scalarText(value, fallback = "") {
+  if (value instanceof Date) return Number.isFinite(value.valueOf()) ? value.toISOString() : fallback;
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean" || typeof value === "bigint" ? String(value) : fallback;
+}
 function normalizeStatus(value) {
-  const s = String(value ?? "todo").trim().toLowerCase().replace(/[ _]+/g, "-");
+  const s = scalarText(value, "todo").trim().toLowerCase().replace(/[ _]+/g, "-");
   if (["done", "completed", "complete", "cancelled", "canceled"].includes(s)) return "done";
   if (["failed", "failure"].includes(s)) return "failed";
   if (["archived", "archive"].includes(s)) return "done";
@@ -154,14 +158,14 @@ function strings(value) {
   if (value == null) return [];
   const entries = Array.isArray(value) ? value : [value];
   return entries.map(
-    (v) => typeof v === "object" && v !== null && "path" in v ? String(v.path) : String(v)
+    (v) => typeof v === "object" && v !== null && "path" in v ? scalarText(v.path) : scalarText(v)
   );
 }
 function link(value) {
   return strings(value)[0]?.replace(/^\[\[/, "").replace(/\]\]$/, "").split("|")[0]?.split("#")[0]?.trim() ?? "";
 }
 function title(fm, path) {
-  return String(fm.title || path.split("/").pop()?.replace(/\.md$/i, "") || "Untitled");
+  return scalarText(fm.title) || path.split("/").pop()?.replace(/\.md$/i, "") || "Untitled";
 }
 function safeMinutes(value) {
   const n = Number(value);
@@ -178,7 +182,7 @@ function dateKey(value) {
     if (!Number.isFinite(value.valueOf())) return "";
     value = value.toISOString();
   }
-  const s = String(value ?? "").slice(0, 10);
+  const s = scalarText(value).slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
   const d = /* @__PURE__ */ new Date(`${s}T12:00:00Z`);
   return !Number.isNaN(d.valueOf()) && d.toISOString().slice(0, 10) === s ? s : "";
@@ -3145,7 +3149,7 @@ function rdatesToString(param, rdates, tzid) {
 
 // src/core/recurrence.ts
 function normalizeRule(raw) {
-  const s = String(raw ?? "").trim();
+  const s = scalarText(raw, raw == null ? "" : "[invalid recurrence]").trim();
   const aliases = {
     daily: "FREQ=DAILY",
     weekly: "FREQ=WEEKLY",
@@ -3303,9 +3307,9 @@ function safeCurrency(value) {
   return typeof value === "string" && /^[A-Z]{3}$/.test(value) ? value : "USD";
 }
 function normalizeTask(path, fm) {
-  const paymentCancelled = String(fm.taskType ?? fm.kind).toLowerCase() === "payment" && /^(cancelled|canceled|archived|archive)$/i.test(String(fm.status));
+  const paymentCancelled = scalarText(fm.taskType ?? fm.kind).toLowerCase() === "payment" && /^(cancelled|canceled|archived|archive)$/i.test(scalarText(fm.status));
   const status = paymentCancelled ? "failed" : normalizeStatus(fm.status);
-  const kind = String(fm.taskType ?? fm.kind ?? "task").toLowerCase();
+  const kind = scalarText(fm.taskType ?? fm.kind, "task").toLowerCase();
   const recurrence = normalizeRule(fm.recurrence ?? fm.repeat);
   const scheduled = dateKey(fm.scheduled) || (recurrence && kind !== "subscription" ? dateKey(fm.dateCreated) : "");
   const occurrences = {};
@@ -3320,7 +3324,7 @@ function normalizeTask(path, fm) {
         occurrences[k] = {
           status: normalizeStatus(r.status),
           minutes: safeMinutes(r.minutes),
-          resolvedAt: r.resolvedAt ? String(r.resolvedAt) : void 0,
+          resolvedAt: r.resolvedAt ? scalarText(r.resolvedAt) : void 0,
           resolvedOn: dateKey(r.resolvedOn),
           ...Object.prototype.hasOwnProperty.call(r, "amount") ? { amount: safeAmount(r.amount), currency: safeCurrency(r.currency) } : {}
         };
@@ -4118,7 +4122,7 @@ var LegacyImporter = class {
       const header = text.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)?.[1] || "";
       if (!/^(Tasks|Projects)\//i.test(file.path) && !header.includes("topLegacySource")) continue;
       const fm = frontmatter(text);
-      if (fm.topLegacySource) imported.set(String(fm.topLegacySource), file.path);
+      if (scalarText(fm.topLegacySource)) imported.set(scalarText(fm.topLegacySource), file.path);
       if (fm.topSchema || !/^(Tasks|Projects)\//i.test(file.path)) continue;
       const isProject = fm.type === "project" || file.basename === "_project";
       const isTask = !isProject && (fm.type === "task" || strings(fm.tags).some((t) => t.replace(/^#/, "") === "task") || fm.status !== void 0);
@@ -4132,7 +4136,7 @@ var LegacyImporter = class {
         result.skipped++;
         continue;
       }
-      const name = String(entry.fm.area || entry.file.path.split("/")[1] || "General");
+      const name = scalarText(entry.fm.area) || entry.file.path.split("/")[1] || "General";
       let area = areas.get(name);
       if (!area) {
         const f2 = await this.service.createNote("area", name, {});
@@ -4185,7 +4189,7 @@ var LegacyImporter = class {
           );
           continue;
         }
-        const start = new Date(String(time.startTime)), end = new Date(String(time.endTime));
+        const start = new Date(scalarText(time.startTime)), end = new Date(scalarText(time.endTime));
         const minutes = Math.round((end.valueOf() - start.valueOf()) / 6e4);
         if (Number.isFinite(minutes) && minutes > 0) {
           if (normalized.recurrence) {
@@ -5527,7 +5531,7 @@ function enhanceSelect(native) {
   native.dataset.tpSelection = "true";
   const doc = native.ownerDocument;
   const w = words(parent.closest("[lang]")?.lang === "en" ? "en" : "ru");
-  const wrapper = parent.createEl("div", { cls: "tp-select-control" });
+  const wrapper = parent.createDiv({ cls: "tp-select-control" });
   parent.insertBefore(wrapper, native);
   wrapper.append(native);
   native.classList.add("tp-native-select");
@@ -5537,11 +5541,11 @@ function enhanceSelect(native) {
   trigger.type = "button";
   trigger.setAttribute("aria-haspopup", "listbox");
   trigger.setAttribute("aria-expanded", "false");
-  const text = trigger.createEl("span", { cls: "tp-select-value" });
-  const arrow = trigger.createEl("span", { cls: "tp-select-arrow" });
+  const text = trigger.createSpan({ cls: "tp-select-value" });
+  const arrow = trigger.createSpan({ cls: "tp-select-arrow" });
   arrow.setAttribute("aria-hidden", "true");
   (0, import_obsidian3.setIcon)(arrow, "chevron-down");
-  const panel = wrapper.createEl("div", { cls: "tp-select-panel" });
+  const panel = wrapper.createDiv({ cls: "tp-select-panel" });
   panel.hidden = true;
   panel.setAttribute("popover", "manual");
   const search = panel.createEl("input", { cls: "tp-select-search" });
@@ -5549,16 +5553,16 @@ function enhanceSelect(native) {
   search.placeholder = w.searchOptions;
   search.setAttribute("aria-label", w.searchOptions);
   search.autocomplete = "off";
-  const list = panel.createEl("div", { cls: "tp-select-options" });
+  const list = panel.createDiv({ cls: "tp-select-options" });
   list.id = `tp-select-${nextId++}`;
   list.setAttribute("role", "listbox");
   list.tabIndex = -1;
   trigger.setAttribute("aria-controls", list.id);
-  const pager = panel.createEl("div", { cls: "tp-select-pager" });
+  const pager = panel.createDiv({ cls: "tp-select-pager" });
   const previous = pager.createEl("button", { text: "\u2039" });
   previous.type = "button";
   previous.setAttribute("aria-label", w.previousOptions);
-  const count = pager.createEl("span");
+  const count = pager.createSpan();
   count.setAttribute("aria-live", "polite");
   const next = pager.createEl("button", { text: "\u203A" });
   next.type = "button";
@@ -5635,10 +5639,10 @@ function enhanceSelect(native) {
     active = Math.min(Math.max(0, active), Math.max(0, matches.length - 1));
     const page = Math.floor(active / pageSize);
     list.replaceChildren();
-    if (!matches.length) list.createEl("div", { cls: "tp-select-empty", text: w.noOptions });
+    if (!matches.length) list.createDiv({ cls: "tp-select-empty", text: w.noOptions });
     for (const option of matches.slice(page * pageSize, (page + 1) * pageSize)) {
       const index = matches.indexOf(option);
-      const node = list.createEl("div", { cls: "tp-select-option", text: option.text });
+      const node = list.createDiv({ cls: "tp-select-option", text: option.text });
       node.id = `${list.id}-${index}`;
       node.setAttribute("role", "option");
       node.setAttribute("aria-selected", String(option.value === native.value));
@@ -7230,8 +7234,8 @@ var BaseModal = class extends import_obsidian6.Modal {
     this.contentEl.lang = this.plugin.settings.language;
     const grow = () => {
       for (const area of this.contentEl.querySelectorAll("textarea")) {
-        area.style.height = "auto";
-        area.style.height = `${Math.max(96, area.scrollHeight + 2)}px`;
+        area.setCssStyles({ height: "auto" });
+        area.setCssStyles({ height: `${Math.max(96, area.scrollHeight + 2)}px` });
       }
     };
     this.contentEl.addEventListener("input", grow);
@@ -7954,8 +7958,19 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
   dismissCardMenus = (event) => {
     if (this.calendarDetailed) return;
     for (const menu of this.contentEl.querySelectorAll(".tp-card-menu[open]"))
-      if (!menu.contains(event.target)) menu.open = false;
+      if (!menu.contains(event.target)) this.setCardMenu(menu, false);
   };
+  setCardMenu(menu, open) {
+    if (open && !this.calendarDetailed) {
+      for (const other of this.main.querySelectorAll(".tp-card-menu[open]"))
+        if (other !== menu) {
+          other.open = false;
+          other.closest(".tp-task-compact")?.classList.remove("tp-card-expanded");
+        }
+    }
+    if (menu.open !== open) menu.open = open;
+    menu.closest(".tp-task-compact")?.classList.toggle("tp-card-expanded", open);
+  }
   quickDraft;
   getViewType() {
     return VIEW_TYPE;
@@ -9392,20 +9407,22 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
     if (compact) {
       const menu = el(row, "details", "tp-card-menu");
       menu.open = this.calendarDetailed;
+      row.classList.toggle("tp-card-expanded", menu.open);
       const summary = el(menu, "summary", "tp-card-menu-toggle");
       summary.title = this.w.taskDetails;
       summary.setAttribute("aria-label", `${this.w.taskDetails}: ${item.task.title}`);
       (0, import_obsidian7.setIcon)(summary, "ellipsis-vertical");
+      summary.addEventListener("click", (event) => {
+        event.preventDefault();
+        if (!this.calendarDetailed) this.setCardMenu(menu, !menu.open);
+      });
       menu.addEventListener("toggle", () => {
-        if (menu.isConnected && menu.open && !this.calendarDetailed)
-          this.main.querySelectorAll(".tp-card-menu[open]").forEach((other) => {
-            if (other !== menu) other.open = false;
-          });
+        if (menu.isConnected) this.setCardMenu(menu, menu.open);
       });
       menu.addEventListener("keydown", (event) => {
         if (event.key === "Escape" && !this.calendarDetailed) {
           event.preventDefault();
-          menu.open = false;
+          this.setCardMenu(menu, false);
           summary.focus();
         }
       });

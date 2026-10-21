@@ -21,7 +21,7 @@ export function enhanceSelect(native: HTMLSelectElement): void {
   native.dataset.tpSelection = 'true';
   const doc = native.ownerDocument;
   const w = words(parent.closest<HTMLElement>('[lang]')?.lang === 'en' ? 'en' : 'ru');
-  const wrapper = parent.createEl('div', { cls: 'tp-select-control' });
+  const wrapper = parent.createDiv( { cls: 'tp-select-control' });
   parent.insertBefore(wrapper, native);
   wrapper.append(native);
   native.classList.add('tp-native-select');
@@ -31,11 +31,11 @@ export function enhanceSelect(native: HTMLSelectElement): void {
   trigger.type = 'button';
   trigger.setAttribute('aria-haspopup', 'listbox');
   trigger.setAttribute('aria-expanded', 'false');
-  const text = trigger.createEl('span', { cls: 'tp-select-value' });
-  const arrow = trigger.createEl('span', { cls: 'tp-select-arrow' });
+  const text = trigger.createSpan( { cls: 'tp-select-value' });
+  const arrow = trigger.createSpan( { cls: 'tp-select-arrow' });
   arrow.setAttribute('aria-hidden', 'true');
   setIcon(arrow, 'chevron-down');
-  const panel = wrapper.createEl('div', { cls: 'tp-select-panel' });
+  const panel = wrapper.createDiv( { cls: 'tp-select-panel' });
   panel.hidden = true;
   panel.setAttribute('popover', 'manual');
   const search = panel.createEl('input', { cls: 'tp-select-search' });
@@ -43,16 +43,16 @@ export function enhanceSelect(native: HTMLSelectElement): void {
   search.placeholder = w.searchOptions;
   search.setAttribute('aria-label', w.searchOptions);
   search.autocomplete = 'off';
-  const list = panel.createEl('div', { cls: 'tp-select-options' });
+  const list = panel.createDiv( { cls: 'tp-select-options' });
   list.id = `tp-select-${nextId++}`;
   list.setAttribute('role', 'listbox');
   list.tabIndex = -1;
   trigger.setAttribute('aria-controls', list.id);
-  const pager = panel.createEl('div', { cls: 'tp-select-pager' });
+  const pager = panel.createDiv( { cls: 'tp-select-pager' });
   const previous = pager.createEl('button', { text: '‹' });
   previous.type = 'button';
   previous.setAttribute('aria-label', w.previousOptions);
-  const count = pager.createEl('span');
+  const count = pager.createSpan();
   count.setAttribute('aria-live', 'polite');
   const next = pager.createEl('button', { text: '›' });
   next.type = 'button';
@@ -136,10 +136,10 @@ export function enhanceSelect(native: HTMLSelectElement): void {
     active = Math.min(Math.max(0, active), Math.max(0, matches.length - 1));
     const page = Math.floor(active / pageSize);
     list.replaceChildren();
-    if (!matches.length) list.createEl('div', { cls: 'tp-select-empty', text: w.noOptions });
+    if (!matches.length) list.createDiv( { cls: 'tp-select-empty', text: w.noOptions });
     for (const option of matches.slice(page * pageSize, (page + 1) * pageSize)) {
       const index = matches.indexOf(option);
-      const node = list.createEl('div', { cls: 'tp-select-option', text: option.text });
+      const node = list.createDiv( { cls: 'tp-select-option', text: option.text });
       node.id = `${list.id}-${index}`;
       node.setAttribute('role', 'option');
       node.setAttribute('aria-selected', String(option.value === native.value));
@@ -215,7 +215,7 @@ export function enhanceSelect(native: HTMLSelectElement): void {
     (search.hidden ? list : search).focus({ preventScroll: true });
   };
   panel.addEventListener('toggle', (event) => {
-    if ((event as ToggleEvent).newState === 'closed' && !panel.hidden) close();
+    if (event.newState === 'closed' && !panel.hidden) close();
   });
   trigger.addEventListener('click', () => (panel.hidden ? open() : close(true)));
   trigger.addEventListener('keydown', (event) => {

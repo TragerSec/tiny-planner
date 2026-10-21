@@ -2,7 +2,7 @@ import { WeekdayStr } from './weekday';
 export declare const isPresent: <T>(value?: T) => value is T;
 export declare const isNumber: (value: unknown) => value is number;
 export declare const isWeekdayStr: (value: unknown) => value is WeekdayStr;
-export declare const isArray: (arg: any) => arg is any[];
+export declare const isArray: (arg: unknown) => arg is unknown[];
 /**
  * Simplified version of python's range()
  */

@@ -80,8 +80,15 @@ export interface Snapshot {
 }
 export const SCHEMA = 1;
 export const TERMINAL = new Set<Status>(['done', 'failed']);
+/** YAML scalar text; malformed collections must not become [object Object]. */
+export function scalarText(value: unknown, fallback = ''): string {
+  if (value instanceof Date) return Number.isFinite(value.valueOf()) ? value.toISOString() : fallback;
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint'
+    ? String(value)
+    : fallback;
+}
 export function normalizeStatus(value: unknown): Status {
-  const s = String(value ?? 'todo')
+  const s = scalarText(value, 'todo')
     .trim()
     .toLowerCase()
     .replace(/[ _]+/g, '-');
@@ -97,7 +104,7 @@ export function strings(value: unknown): string[] {
   if (value == null) return [];
   const entries: unknown[] = Array.isArray(value) ? value as unknown[] : [value];
   return entries.map((v) =>
-    typeof v === 'object' && v !== null && 'path' in v ? String(v.path) : String(v),
+    typeof v === 'object' && v !== null && 'path' in v ? scalarText(v.path) : scalarText(v),
   );
 }
 export function link(value: unknown): string {
@@ -111,7 +118,7 @@ export function link(value: unknown): string {
   );
 }
 export function title(fm: FM, path: string): string {
-  return String(fm.title || path.split('/').pop()?.replace(/\.md$/i, '') || 'Untitled');
+  return scalarText(fm.title) || path.split('/').pop()?.replace(/\.md$/i, '') || 'Untitled';
 }
 export function safeMinutes(value: unknown): number {
   const n = Number(value);

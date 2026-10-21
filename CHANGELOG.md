@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.5
+
+- Fix Obsidian review findings: textarea sizing uses setCssStyles, selection controls use createDiv/createSpan, and the redundant ToggleEvent assertion is removed.
+- Replace :has selectors with an explicit expansion class and use gap shorthands.
+- Precisely type three upstream declaration signatures, keeping executable vendor bytes unchanged.
+- Add pinned official Obsidian lint to Checks and Release; audit the isolated toolchain and fail on source warnings.
+- Validate YAML scalars before converting them to text; malformed recurrence remains flagged rather than silently discarded.
+
 ## 1.0.4
 
 - Correct workload for multiple repeats moved onto one day and explicitly reopened repeats in legacy closed series.

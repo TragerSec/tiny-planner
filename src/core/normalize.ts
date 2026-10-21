@@ -10,6 +10,7 @@ import {
   safeMinutes,
   strings,
   title,
+  scalarText,
 } from './model';
 import { dateKey, timeKey } from './dates';
 import { normalizeRule, validateRule } from './recurrence';
@@ -23,10 +24,10 @@ export function safeCurrency(value: unknown): string {
 }
 export function normalizeTask(path: string, fm: FM): Task {
   const paymentCancelled =
-    String(fm.taskType ?? fm.kind).toLowerCase() === 'payment' &&
-    /^(cancelled|canceled|archived|archive)$/i.test(String(fm.status));
+    scalarText(fm.taskType ?? fm.kind).toLowerCase() === 'payment' &&
+    /^(cancelled|canceled|archived|archive)$/i.test(scalarText(fm.status));
   const status = paymentCancelled ? 'failed' : normalizeStatus(fm.status);
-  const kind = String(fm.taskType ?? fm.kind ?? 'task').toLowerCase() as Kind;
+  const kind = scalarText(fm.taskType ?? fm.kind, 'task').toLowerCase() as Kind;
   const recurrence = normalizeRule(fm.recurrence ?? fm.repeat);
   const scheduled =
     dateKey(fm.scheduled) || (recurrence && kind !== 'subscription' ? dateKey(fm.dateCreated) : '');
@@ -42,7 +43,7 @@ export function normalizeTask(path: string, fm: FM): Task {
         occurrences[k] = {
           status: normalizeStatus(r.status),
           minutes: safeMinutes(r.minutes),
-          resolvedAt: r.resolvedAt ? String(r.resolvedAt) : undefined,
+          resolvedAt: r.resolvedAt ? scalarText(r.resolvedAt) : undefined,
           resolvedOn: dateKey(r.resolvedOn),
           ...(Object.prototype.hasOwnProperty.call(r, 'amount')
             ? { amount: safeAmount(r.amount), currency: safeCurrency(r.currency) }

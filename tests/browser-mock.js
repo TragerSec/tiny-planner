@@ -1,5 +1,8 @@
 import manifest from '../manifest.json';
 import { parse, stringify } from 'yaml';
+HTMLElement.prototype.setCssStyles = function (styles) {
+  Object.assign(this.style, styles);
+};
 Node.prototype.createEl = function (tag, { cls = '', text = '' } = {}) {
   const node = this.ownerDocument.createElement(tag);
   node.className = cls;
@@ -7,6 +10,8 @@ Node.prototype.createEl = function (tag, { cls = '', text = '' } = {}) {
   this.appendChild(node);
   return node;
 };
+Node.prototype.createDiv = function (options) { return this.createEl('div', options); };
+Node.prototype.createSpan = function (options) { return this.createEl('span', options); };
 Node.prototype.createSvg = function (tag, { attr = {} } = {}) {
   const node = this.ownerDocument.createElementNS('http://www.w3.org/2000/svg', tag);
   for (const [key, value] of Object.entries(attr)) node.setAttribute(key, String(value));

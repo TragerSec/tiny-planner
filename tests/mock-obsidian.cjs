@@ -309,6 +309,9 @@ function makeDOM() {
   global.document = dom.window.document;
   global.HTMLElement = dom.window.HTMLElement;
   global.Node = dom.window.Node;
+  dom.window.HTMLElement.prototype.setCssStyles = function (styles) {
+    Object.assign(this.style, styles);
+  };
   dom.window.Node.prototype.createEl = function (tag, { cls = '', text = '' } = {}) {
     const node = this.ownerDocument.createElement(tag);
     node.className = cls;
@@ -316,6 +319,8 @@ function makeDOM() {
     this.appendChild(node);
     return node;
   };
+  dom.window.Node.prototype.createDiv = function (options) { return this.createEl('div', options); };
+  dom.window.Node.prototype.createSpan = function (options) { return this.createEl('span', options); };
   dom.window.Node.prototype.createSvg = function (tag, { attr = {} } = {}) {
     const node = this.ownerDocument.createElementNS('http://www.w3.org/2000/svg', tag);
     for (const [key, value] of Object.entries(attr)) node.setAttribute(key, String(value));
