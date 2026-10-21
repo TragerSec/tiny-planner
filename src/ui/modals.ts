@@ -28,6 +28,15 @@ export class BaseModal extends Modal {
   }
   onOpen(): void {
     this.contentEl.classList.add('tp-modal');
+    this.contentEl.lang = this.plugin.settings.language;
+    const grow = () => {
+      for (const area of this.contentEl.querySelectorAll<HTMLTextAreaElement>('textarea')) {
+        area.style.height = 'auto';
+        area.style.height = `${Math.max(96, area.scrollHeight + 2)}px`;
+      }
+    };
+    this.contentEl.addEventListener('input', grow);
+    this.contentEl.ownerDocument.defaultView?.queueMicrotask(grow);
     this.contentEl.style.setProperty(
       '--tp-ui-scale',
       String(this.plugin.normalizeUiScale(this.plugin.settings.uiScalePercent) / 100),
@@ -231,6 +240,7 @@ export class TaskModal extends BaseModal {
     const priority = select(
       field(grid, w.priority),
       [
+        ['low', w.low],
         ['normal', w.normal],
         ['high', w.high],
       ],
@@ -375,7 +385,7 @@ export class TaskModal extends BaseModal {
               }
             : {}),
           minutes: this.item?.recurring ? task!.minutes : Number(minutes.value),
-          priority: priority.value as 'normal' | 'high',
+          priority: priority.value as 'low' | 'normal' | 'high',
         };
         if (this.item) {
           await this.plugin.service.saveTask(
@@ -605,7 +615,7 @@ export class SubscriptionModal extends BaseModal {
     super.onOpen();
     const w = this.w,
       t = this.task;
-    el(this.contentEl, 'h2', '', t ? w.subscription : w.addSubscription);
+    el(this.contentEl, 'h2', '', t ? w.editSubscription : w.addSubscription);
     const form = el(this.contentEl, 'form');
     const title = input(field(form, w.title), 'text', t?.title || '');
     title.required = true;

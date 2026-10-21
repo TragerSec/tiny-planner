@@ -81,6 +81,8 @@ const theme = require('./browser-theme.cjs');
       );
     };
     const capture = async (name) => {
+      // Optional diagnostics only; all behavior assertions still run.
+      if (process.env.TP_SKIP_SCREENSHOTS === '1') return;
       const host = page.locator('.tp-host').first();
       const previous = await host.evaluate((n) => ({
         height: n.style.height,
@@ -187,7 +189,7 @@ const theme = require('./browser-theme.cjs');
       },
     );
     await check(
-      'navigation and all three sidebar actions stay visible across tabs and scrolling',
+      'navigation and sidebar actions remain reachable through the single page scroller',
       async () => {
         for (const viewport of [
           { width: 1440, height: 720 },
@@ -208,37 +210,39 @@ const theme = require('./browser-theme.cjs');
             'manualTab',
           ]) {
             await page.locator(`[data-tab="${tab}"]`).click();
-            const navTop = await page
-              .locator('.tp-nav')
-              .evaluate((n) => n.getBoundingClientRect().top);
-            await page.locator('.tp-content').evaluate((n) => {
-              n.scrollTop = n.scrollHeight;
-            });
-            assert.equal(
-              await page.locator('.tp-nav').evaluate((n) => n.getBoundingClientRect().top),
-              navTop,
-            );
-            const footer = await page.locator('.tp-sidebar-bottom').evaluate((n) => ({
-              top: n.getBoundingClientRect().top,
-              bottom: n.getBoundingClientRect().bottom,
-            }));
+            await page.locator('.tp-sidebar-bottom').scrollIntoViewIfNeeded();
+            const footer = await page.locator('.tp-sidebar-bottom').boundingBox();
             assert.ok(
-              footer.top >= 0 && footer.bottom <= viewport.height + 1,
-              `${viewport.width}px ${tab}: sidebar actions clipped`,
+              footer.y >= -1 && footer.y + footer.height <= viewport.height + 1,
+              JSON.stringify({
+                viewport,
+                tab,
+                footer,
+                host: await page.locator('.tp-host').evaluate((n) => ({
+                  height: n.clientHeight,
+                  scroll: n.scrollTop,
+                  full: n.scrollHeight,
+                })),
+                sidebar: await page.locator('.tp-sidebar').evaluate((n) => ({
+                  height: n.clientHeight,
+                  position: getComputedStyle(n).position,
+                })),
+              }),
             );
             assert.equal(await page.locator('.tp-sidebar-bottom button').count(), 3);
+            assert.ok(
+              await page
+                .locator('.tp-nav')
+                .evaluate((n) => !/auto|scroll/.test(getComputedStyle(n).overflowY)),
+            );
             assert.equal(
               await page.locator(`[data-tab="${tab}"]`).getAttribute('aria-current'),
               'true',
             );
             assert.ok(
-              await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
-              `${viewport.width}px ${tab}: page overflow`,
+              await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
             );
           }
-          await page.screenshot({
-            path: path.join(root, `docs/screenshots/sidebar-scrolled-${viewport.width}.png`),
-          });
         }
         await setViewport({ width: 1440, height: 1050 });
         await page.locator('[data-tab="today"]').click();
@@ -463,7 +467,11 @@ const theme = require('./browser-theme.cjs');
     });
     await check('date dialog reschedules an item to a distant month', async () => {
       await page.getByRole('button', { name: 'Текущий месяц', exact: true }).click();
-      await page.locator('[data-day="2026-10-02"] [data-path="Planner/Tasks/english.md"]').hover();
+      await page
+        .locator(
+          '[data-day="2026-10-02"] [data-path="Planner/Tasks/english.md"] .tp-card-menu-toggle',
+        )
+        .click();
       await page
         .locator('[data-day="2026-10-02"] [data-path="Planner/Tasks/english.md"]')
         .locator('[aria-label="Перенести"]')
@@ -552,7 +560,9 @@ const theme = require('./browser-theme.cjs');
             '[data-status="in-progress"] [data-path="Planner/Tasks/copy.md"]',
           ),
       );
-      await card().dragTo(page.locator('.tp-board-column[data-status="done"] h2'));
+      await card()
+        .locator('.tp-board-title')
+        .dragTo(page.locator('.tp-board-column[data-status="done"] h2'));
       await page.waitForFunction(
         () => !!document.querySelector('[data-status="done"] [data-path="Planner/Tasks/copy.md"]'),
       );
@@ -620,7 +630,7 @@ const theme = require('./browser-theme.cjs');
         );
         assert.equal(await color('2026-10-02'), 'rgb(64, 231, 155)');
         assert.equal(await color('2026-10-03'), original);
-        await occurrence('2026-10-03').hover();
+        await occurrence('2026-10-03').locator('.tp-card-menu-toggle').click();
         await occurrence('2026-10-03').locator('.tp-fail-button').click();
         await page.waitForFunction(
           () =>
@@ -1670,8 +1680,8 @@ const theme = require('./browser-theme.cjs');
         }
         await page.locator('.tp-modal .tp-time-picker-button').click();
         const clock = page.locator('.tp-clock-popup:popover-open');
-        await clock.getByRole('combobox', { name: 'Часы', exact: true }).selectOption('14');
-        await clock.getByRole('combobox', { name: 'Минуты', exact: true }).selectOption('35');
+        await clock.locator('select[aria-label="Часы"]').selectOption('14');
+        await clock.locator('select[aria-label="Минуты"]').selectOption('35');
         await page.screenshot({
           path: path.join(root, 'docs/screenshots/clock-picker-mobile.png'),
         });
@@ -1679,7 +1689,7 @@ const theme = require('./browser-theme.cjs');
         assert.equal(await page.locator('.tp-modal .tp-time').inputValue(), '14:35');
         assert.equal(await page.locator('.tp-clock-popup select').count(), 0);
         await page.locator('.tp-modal .tp-time-picker-button').click();
-        await clock.getByRole('combobox', { name: 'Часы', exact: true }).selectOption('22');
+        await clock.locator('select[aria-label="Часы"]').selectOption('22');
         await page.keyboard.press('Escape');
         assert.equal(await page.locator('.tp-modal .tp-time').inputValue(), '14:35');
         assert.equal(
@@ -1744,9 +1754,9 @@ const theme = require('./browser-theme.cjs');
           .locator('xpath=ancestor::*[contains(@class, "tp-day")][1]')
           .screenshot({ path: path.join(root, 'docs/screenshots/priority-title-cell.png') });
         await page.locator('[data-tab=manualTab]').click();
-        assert.equal(await page.locator('.tp-manual-divider').count(), 10);
-        assert.equal(await page.locator('.tp-manual-heading').count(), 11);
-        assert.equal(await page.locator('.tp-manual-link').count(), 11);
+        assert.equal(await page.locator('.tp-manual-divider').count(), 11);
+        assert.equal(await page.locator('.tp-manual-heading').count(), 12);
+        assert.equal(await page.locator('.tp-manual-link').count(), 12);
         for (const width of [1440, 320]) {
           await setViewport({ width, height: 1050 });
           const headings = await page.locator('.tp-manual-heading').evaluateAll((nodes) =>
@@ -1762,7 +1772,7 @@ const theme = require('./browser-theme.cjs');
           assert.ok(
             await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
           );
-          await page.locator('.tp-content').evaluate((n) => {
+          await page.locator('.tp-host').evaluate((n) => {
             n.scrollTop = 0;
           });
           await page.screenshot({
@@ -1770,7 +1780,7 @@ const theme = require('./browser-theme.cjs');
           });
         }
         await page.locator('.tp-manual-link').filter({ hasText: 'О плагине' }).click();
-        assert.ok(await page.locator('.tp-content').evaluate((n) => n.scrollTop > 200));
+        assert.ok(await page.locator('.tp-host').evaluate((n) => n.scrollTop > 200));
         assert.ok(
           await page.locator('.tp-manual-heading').filter({ hasText: 'О плагине' }).isVisible(),
         );
@@ -1786,7 +1796,7 @@ const theme = require('./browser-theme.cjs');
         try {
           await page.locator('[data-tab=manualTab]').click();
           assert.equal(await page.locator('.tp-manual-contents').getAttribute('aria-label'), null);
-          assert.equal(await page.locator('ol.tp-manual-links a').count(), 11);
+          assert.equal(await page.locator('ol.tp-manual-links a').count(), 12);
           for (const width of [1440, 390, 320]) {
             await setViewport({ width, height: 1050 });
             const links = await page.locator('.tp-manual-link').evaluateAll((nodes) =>
@@ -1813,7 +1823,7 @@ const theme = require('./browser-theme.cjs');
               ),
             );
             assert.ok(links.slice(1).every((n, i) => n.top >= links[i].bottom));
-            await page.locator('.tp-content').evaluate((n) => {
+            await page.locator('.tp-host').evaluate((n) => {
               n.scrollTop = 0;
             });
             await page.screenshot({
@@ -1828,7 +1838,7 @@ const theme = require('./browser-theme.cjs');
               .filter({ hasText: 'О плагине' })
               .evaluate((n) => n === document.activeElement),
           );
-          assert.ok(await page.locator('.tp-content').evaluate((n) => n.scrollTop > 200));
+          assert.ok(await page.locator('.tp-host').evaluate((n) => n.scrollTop > 200));
         } finally {
           await style.evaluate((n) => n.remove());
         }
@@ -1987,7 +1997,7 @@ const theme = require('./browser-theme.cjs');
                     n.controls.every((b) => b.left >= n.row.left && b.right <= n.row.right),
                 ),
               );
-              await page.locator('.tp-content').evaluate((n) => {
+              await page.locator('.tp-host').evaluate((n) => {
                 n.scrollTop = 0;
               });
               await page.screenshot({
@@ -2549,11 +2559,11 @@ const theme = require('./browser-theme.cjs');
           );
         }
         assert.equal(await page.locator('[data-period="365"]').textContent(), 'Год');
-        await page.locator('.tp-content').evaluate((n) => (n.scrollTop = 350));
-        const top = await page.locator('.tp-content').evaluate((n) => n.scrollTop);
+        await page.locator('.tp-host').evaluate((n) => (n.scrollTop = 350));
+        const top = await page.locator('.tp-host').evaluate((n) => n.scrollTop);
         assert.ok(top > 200);
         await page.locator('[data-period="30"]').evaluate((n) => n.click());
-        assert.equal(await page.locator('.tp-content').evaluate((n) => n.scrollTop), top);
+        assert.equal(await page.locator('.tp-host').evaluate((n) => n.scrollTop), top);
         await capture('all-dates-year.png');
       },
     );
@@ -2567,7 +2577,7 @@ const theme = require('./browser-theme.cjs');
         await page.getByLabel('Сумма', { exact: true }).fill('42.75');
         await page.getByLabel('Валюта · ISO-код', { exact: true }).fill('EUR');
         assert.equal(
-          await page.locator('.tp-modal').getByLabel('Статус', { exact: true }).inputValue(),
+          await page.locator('.tp-modal').locator('select[aria-label="Статус"]').inputValue(),
           'done',
         );
         await page.locator('.tp-modal button[type=submit]').click();
@@ -2956,6 +2966,10 @@ const theme = require('./browser-theme.cjs');
         assert.equal(await cell.locator('.tp-task').count(), 18);
         assert.equal(await page.locator('[data-day="2026-10-01"] .tp-task').count(), 20);
         assert.equal(await page.locator('[data-day="2026-10-03"] .tp-task').count(), 0);
+        assert.equal(
+          await page.locator('[data-day="2026-10-03"] .tp-calendar-continuation').count(),
+          20,
+        );
         await cell.locator('.tp-task:not(.tp-calendar-long-task) .tp-check').first().click();
         await page.waitForFunction(
           () => document.querySelectorAll('[data-day="2026-10-02"] .tp-done').length === 1,
@@ -2976,7 +2990,7 @@ const theme = require('./browser-theme.cjs');
       },
     );
     await check(
-      'full calendar titles and area/project labels wrap visibly without clipping',
+      'full calendar titles and disclosed project labels wrap visibly without clipping',
       async () => {
         await setViewport({ width: 1440, height: 1000 });
         await page.evaluate(async () => {
@@ -3005,21 +3019,30 @@ const theme = require('./browser-theme.cjs');
           await setViewport({ width, height: 1000 });
           const cell = page.locator('[data-day="2026-10-06"]');
           assert.equal(await cell.locator('.tp-task').count(), 2);
-          const labels = await cell.locator('.tp-task-title,.tp-project-label').evaluateAll((ns) =>
-            ns.map((n) => ({
-              text: n.textContent,
-              whiteSpace: getComputedStyle(n).whiteSpace,
-              overflow: getComputedStyle(n).overflow,
-              fits: n.scrollHeight <= n.clientHeight + 1 && n.scrollWidth <= n.clientWidth + 1,
-            })),
-          );
+          const labels = [];
+          for (let i = 0; i < 2; i++) {
+            const card = cell.locator('.tp-task').nth(i);
+            assert.equal(await card.locator('.tp-task-meta').isVisible(), false);
+            await card.locator('.tp-card-menu-toggle').click();
+            labels.push(
+              ...(await card.locator('.tp-task-title,.tp-project-label').evaluateAll((ns) =>
+                ns.map((n) => ({
+                  text: n.textContent,
+                  whiteSpace: getComputedStyle(n).whiteSpace,
+                  overflow: getComputedStyle(n).overflow,
+                  fits: n.scrollHeight <= n.clientHeight + 1 && n.scrollWidth <= n.clientWidth + 1,
+                })),
+              )),
+            );
+            await card.locator('.tp-card-menu-toggle').press('Escape');
+          }
           assert.equal(labels.length, 4);
           assert.ok(
             labels.every((n) => n.whiteSpace === 'normal' && n.overflow === 'visible' && n.fits),
             JSON.stringify(labels),
           );
           assert.ok(
-            labels.filter((n) => n.text.includes('Armenia / Driving School and Practical Training'))
+            labels.filter((n) => n.text === 'Armenia / Driving School and Practical Training')
               .length === 2,
           );
           assert.equal(await cell.locator('.tp-deadline-label').count(), 1);
@@ -3091,6 +3114,10 @@ const theme = require('./browser-theme.cjs');
         await page.locator('[data-tab=calendar]').click();
         assert.equal(await page.locator('.tp-day .tp-task').count(), 4);
         assert.equal(await page.locator('[data-day="2026-10-03"] .tp-task').count(), 0);
+        assert.equal(
+          await page.locator('[data-day="2026-10-03"] .tp-calendar-continuation').count(),
+          1,
+        );
         await page.locator('[data-calendar-view=week]').click();
         assert.equal(await page.locator('.tp-day').count(), 7);
         await page.locator('[data-calendar-view=day]').click();
@@ -3108,9 +3135,16 @@ const theme = require('./browser-theme.cjs');
         assert.ok(agenda.width <= 881);
         const card = await page.locator('.tp-task').boundingBox();
         assert.ok(card.height < 90, 'Day cards should fit a compact row');
-        const action = await page.locator('.tp-task-actions').boundingBox();
+        const action = await page.locator('.tp-card-menu-toggle').boundingBox();
         const body = await page.locator('.tp-task-body').boundingBox();
-        assert.ok(action.x >= body.x + body.width - 1, 'Day actions belong alongside task text');
+        assert.ok(
+          action.x >= body.x + body.width - 1,
+          'Day action menu belongs alongside task text',
+        );
+        assert.equal(await page.locator('.tp-task-actions').isVisible(), false);
+        await page.locator('.tp-card-menu-toggle').click();
+        assert.ok(await page.locator('.tp-task-actions').isVisible());
+        await page.locator('.tp-card-menu-toggle').press('Escape');
         await page.locator('.tp-task-title').click();
         assert.equal(await page.locator('[data-field=plannedMinutes]').inputValue(), '91');
         assert.equal(await page.locator('[data-field=minutes]').inputValue(), '11');
@@ -3278,7 +3312,7 @@ const theme = require('./browser-theme.cjs');
       },
     );
     await check(
-      'reference calendar uses a square frame, context-first cards and shared mono typography',
+      'calendar retains its frame and typography with compact metadata and disclosure actions',
       async () => {
         await setViewport({ width: 1440, height: 1000 });
         await page.locator('[data-tab=calendar]').click();
@@ -3287,19 +3321,25 @@ const theme = require('./browser-theme.cjs');
         assert.equal(await frame.locator('.tp-calendar-toolbar').count(), 1);
         assert.equal(await frame.locator('.tp-calendar-grid').count(), 1);
         assert.equal(await frame.evaluate((n) => getComputedStyle(n).borderRadius), '0px');
-        const card = page.locator('.tp-day .tp-task:has(.tp-task-context)').first();
+        const card = page.locator('.tp-day .tp-task:has(.tp-task-meta .tp-project-label)').first();
         assert.ok(
           await card.evaluate((n) => {
-            const context = n.querySelector('.tp-task-context').getBoundingClientRect();
+            const context = n.querySelector('.tp-task-meta').getBoundingClientRect();
             const title = n.querySelector('.tp-task-heading').getBoundingClientRect();
             const style = getComputedStyle(n);
             return (
-              context.bottom <= title.top + 1 &&
-              style.borderRadius === '0px' &&
+              context.height === 0 &&
+              title.height > 0 &&
+              n.querySelector('.tp-card-menu') &&
+              !n.querySelector('.tp-card-menu').open &&
               style.borderInlineStartWidth === '2px'
             );
           }),
         );
+        assert.equal(await card.locator('.tp-task-meta').isVisible(), false);
+        await card.locator('.tp-card-menu-toggle').click();
+        assert.equal(await card.locator('.tp-task-meta').isVisible(), true);
+        await card.locator('.tp-card-menu-toggle').press('Escape');
         const font = await page
           .locator('.tp-shell')
           .evaluate((n) => getComputedStyle(n).fontFamily);
@@ -3355,6 +3395,7 @@ const theme = require('./browser-theme.cjs');
               await setViewport({ width, height: 1000 });
               const toggle = page.locator('[data-menu-toggle]');
               const contentBefore = await page.locator('.tp-content').boundingBox();
+              const offsetBefore = await page.locator('.tp-content').evaluate((n) => n.offsetTop);
               const buttonBefore = await toggle.boundingBox();
               await toggle.focus();
               await page.keyboard.press('Enter');
@@ -3377,7 +3418,9 @@ const theme = require('./browser-theme.cjs');
               assert.ok(
                 width > 600
                   ? contentAfter.width > contentBefore.width
-                  : contentAfter.height > contentBefore.height,
+                  : await page
+                      .locator('.tp-content')
+                      .evaluate((n, before) => n.offsetTop < before, offsetBefore),
               );
               assert.ok(await toggle.evaluate((n) => n === document.activeElement));
               assert.ok(
@@ -3440,7 +3483,7 @@ const theme = require('./browser-theme.cjs');
             return {
               done: style.getPropertyValue('--tp-status-done').trim(),
               failed: style.getPropertyValue('--tp-status-failed').trim(),
-              context: rgb(getComputedStyle(n.querySelector('.tp-task-context')).color),
+              context: rgb(getComputedStyle(n.querySelector('.tp-task-meta')).color),
               muted: rgb(style.getPropertyValue('--text-muted')),
               line: rgb(getComputedStyle(n.querySelector('.tp-calendar-surface')).borderTopColor),
               border: rgb(style.getPropertyValue('--background-modifier-border')),
@@ -3449,7 +3492,7 @@ const theme = require('./browser-theme.cjs');
           });
           assert.equal(colors.done, '#40e79b');
           assert.equal(colors.failed, '#ff6582');
-          assert.ok(colors.context.every((v, i) => v > colors.muted[i]));
+          assert.ok(colors.context.every((v, i) => v >= colors.muted[i]));
           assert.ok(colors.line.every((v, i) => v > colors.border[i]));
           assert.equal(colors.accent, 'rgb(86, 159, 137)');
           await page.evaluate(() => {
@@ -3543,8 +3586,8 @@ const theme = require('./browser-theme.cjs');
           assert.equal(await marker.evaluate((n) => n.tagName), 'SPAN');
           assert.equal(await page.locator('.tp-description-button').count(), 0);
           const size = await marker.locator('svg').boundingBox();
-          assert.equal(size.width, 20);
-          assert.equal(size.height, 20);
+          assert.equal(size.width, 14);
+          assert.equal(size.height, 14);
           await marker
             .locator('xpath=ancestor::*[contains(concat(" ", @class, " "), " tp-task ")]')
             .locator('.tp-task-title')

@@ -36,16 +36,21 @@ export function dayLoad(tasks: readonly Task[], date: string, capacity: number) 
   let minutes = 0,
     unestimated = 0;
   for (const task of tasks) {
-    if (!isActive(task.status) || task.kind === 'payment' || task.kind === 'subscription') continue;
+    if (task.kind === 'payment' || task.kind === 'subscription') continue;
+    if (task.recurrence) {
+      const active = calendarItems(task, date, date).filter((i) => isActive(i.status)).length;
+      if (!task.plannedMinutes) unestimated += active;
+      else minutes += task.plannedMinutes * active;
+      continue;
+    }
+    if (!isActive(task.status)) continue;
     const dates = workDays(task);
-    const planned = task.recurrence
-      ? calendarItems(task, date, date).some((i) => isActive(i.status))
-      : dates.includes(date) || (!dates.length && task.due === date);
+    const planned = dates.includes(date) || (!dates.length && task.due === date);
     if (!planned) continue;
     if (!task.plannedMinutes) unestimated++;
     else {
-      const count = task.recurrence ? 1 : Math.max(1, dates.length);
-      const index = task.recurrence || !dates.length ? 0 : dates.indexOf(date);
+      const count = Math.max(1, dates.length);
+      const index = !dates.length ? 0 : dates.indexOf(date);
       minutes +=
         Math.floor(task.plannedMinutes / count) + (index < task.plannedMinutes % count ? 1 : 0);
     }
@@ -57,4 +62,18 @@ export function dayLoad(tasks: readonly Task[], date: string, capacity: number) 
     capacity,
     over: minutes > capacity,
   };
+}
+
+/** Presentation only: bounded by visible dates, never work or completion occurrences. */
+export function calendarContinuations(task: Task, visibleDates: readonly string[]): string[] {
+  if (
+    task.recurrence ||
+    task.kind === 'subscription' ||
+    !task.scheduled ||
+    !task.due ||
+    task.scheduled >= task.due
+  )
+    return [];
+  const work = new Set(workDays(task));
+  return visibleDates.filter((date) => date > task.scheduled && date < task.due && !work.has(date));
 }

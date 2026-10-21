@@ -34,14 +34,6 @@ export function monthGrid(key: string): string[] {
   const start = addDays(first, -((utc(first).getUTCDay() + 6) % 7));
   return Array.from({ length: 42 }, (_, i) => addDays(start, i));
 }
-export function pretty(key: string, locale: string): string {
-  return key
-    ? new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(
-        utc(key),
-      )
-    : '';
-}
-
 export type DateFormat = 'dmy' | 'mdy' | 'iso';
 export function formatDate(key: string, format: DateFormat = 'dmy'): string {
   if (!dateKey(key)) return '';

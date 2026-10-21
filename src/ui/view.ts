@@ -11,7 +11,14 @@ import {
   utc,
 } from '../core/dates';
 import { isOverdue, sortItems, taskItem, todayItems } from '../core/selectors';
-import { calendarItems, calendarDays, CalendarView, dayLoad, workDays } from '../core/calendar';
+import {
+  calendarItems,
+  calendarContinuations,
+  calendarDays,
+  CalendarView,
+  dayLoad,
+  workDays,
+} from '../core/calendar';
 import { budgetReport } from '../core/budgets';
 import { boardItems, boardWindow, BoardScope } from '../core/board';
 import { monthlyCosts, paymentOn, nextPaymentDate } from '../core/subscriptions';
@@ -20,6 +27,7 @@ import { financeDashboard, expenseHistory, FinanceState, money } from './finance
 import { recurrenceEnd } from '../core/recurrence';
 import { analytics, isSeries, loggedMinutes } from '../core/analytics';
 import { manual } from './manual';
+import { setSelectValue } from './selection';
 import { dashboard, DashboardState, periodHeading } from './dashboard';
 import {
   button,
@@ -68,6 +76,7 @@ export class PlannerView extends ItemView {
   private expenseMode: 'payments' | 'subscriptions' = 'payments';
   private subscriptionScope = 'active';
   private hideCalendarDone = false;
+  private hideCalendarFailed = false;
   private hideCalendarRecurring = false;
   private sidebarCollapsed = false;
   private filtersExpanded = false;
@@ -78,6 +87,7 @@ export class PlannerView extends ItemView {
   private project = '';
   private month = day().slice(0, 7) + '-01';
   private calendarView: CalendarView = 'month';
+  private calendarDetailed = false;
   private calendarFocus = day();
   private w: Words;
   private main!: HTMLElement;
@@ -96,6 +106,11 @@ export class PlannerView extends ItemView {
   private monthTimer?: number;
   private opened = false;
   private resizeObserver?: ResizeObserver;
+  private readonly dismissCardMenus = (event: Event): void => {
+    if (this.calendarDetailed) return;
+    for (const menu of this.contentEl.querySelectorAll<HTMLDetailsElement>('.tp-card-menu[open]'))
+      if (!menu.contains(event.target as Node | null)) menu.open = false;
+  };
   private quickDraft?: {
     title: string;
     project: string;
@@ -121,6 +136,8 @@ export class PlannerView extends ItemView {
   }
   async onOpen(): Promise<void> {
     this.opened = true;
+    this.contentEl.ownerDocument.addEventListener('pointerdown', this.dismissCardMenus);
+    this.contentEl.ownerDocument.addEventListener('focusin', this.dismissCardMenus);
     const Observer = this.contentEl.ownerDocument.defaultView?.ResizeObserver;
     if (Observer) {
       let previousWidth = 0;
@@ -129,6 +146,7 @@ export class PlannerView extends ItemView {
         if (!width) return;
         this.contentEl.classList.toggle('tp-narrow', width <= 1050);
         this.contentEl.classList.toggle('tp-mobile', width <= 600);
+        this.contentEl.classList.toggle('tp-agenda', width <= 1100);
         if (Math.abs(width - previousWidth) > 1) {
           previousWidth = width;
           if (this.tab === 'statistics') this.render();
@@ -146,6 +164,8 @@ export class PlannerView extends ItemView {
   }
   async onClose(): Promise<void> {
     this.opened = false;
+    this.contentEl.ownerDocument.removeEventListener('pointerdown', this.dismissCardMenus);
+    this.contentEl.ownerDocument.removeEventListener('focusin', this.dismissCardMenus);
     this.unsubscribe?.();
     this.resizeObserver?.disconnect();
     this.cancelMonth();
@@ -164,24 +184,24 @@ export class PlannerView extends ItemView {
       ? `${hours} ${this.w.hourUnit}${rest ? ` ${rest} ${this.w.minuteUnit}` : ''}`
       : `${rest} ${this.w.minuteUnit}`;
   }
-  private taskTimes(parent: HTMLElement, item: Occurrence): void {
+  private taskTimes(parent: HTMLElement, item: Occurrence, compact = false): void {
     const work = item.task.kind !== 'payment' && item.task.kind !== 'subscription';
+    const value = (cls: string, label: string, duration: string) => {
+      const span = el(parent, 'span', cls);
+      span.title = `${label}: ${duration}`;
+      el(span, 'span', compact ? 'tp-visually-hidden' : '', `${label}: `);
+      el(span, 'span', '', duration);
+    };
     if (work && item.task.plannedMinutes)
-      el(
-        parent,
-        'span',
+      value(
         'tp-planned-minutes',
-        `${item.status === 'done' ? this.w.taskPlan : this.w.estimate}: ${this.duration(item.task.plannedMinutes)}`,
+        item.status === 'done' ? this.w.taskPlan : this.w.estimate,
+        this.duration(item.task.plannedMinutes),
       );
     if (item.minutes)
-      el(
-        parent,
-        'span',
-        'tp-actual-minutes',
-        item.status === 'done' && work
-          ? `${this.w.taskSpent}: ${this.duration(item.minutes)}`
-          : `${item.minutes} ${this.w.minuteUnit}`,
-      );
+      if (item.status === 'done' && work)
+        value('tp-actual-minutes', this.w.taskSpent, this.duration(item.minutes));
+      else el(parent, 'span', 'tp-actual-minutes', `${item.minutes} ${this.w.minuteUnit}`);
   }
   private locale(): string {
     return this.plugin.settings.language === 'ru' ? 'ru-RU' : 'en-US';
@@ -215,6 +235,7 @@ export class PlannerView extends ItemView {
     this.w = words(this.plugin.settings.language);
     this.contentEl.replaceChildren();
     this.contentEl.classList.add('tp-host');
+    this.contentEl.lang = this.plugin.settings.language;
     this.contentEl.style.setProperty(
       '--tp-ui-scale',
       String(this.plugin.normalizeUiScale(this.plugin.settings.uiScalePercent) / 100),
@@ -517,7 +538,7 @@ export class PlannerView extends ItemView {
       this.project = this.projectFilter.value;
       this.limits.clear();
       this.dashboardState.page = 0;
-      this.quickProject.value = this.project;
+      setSelectValue(this.quickProject, this.project);
       this.projectTooltip();
       this.render();
     });
@@ -543,7 +564,7 @@ export class PlannerView extends ItemView {
       this.quickDraft &&
       [...this.quickProject.options].some((o) => o.value === this.quickDraft!.project)
     )
-      this.quickProject.value = this.quickDraft.project;
+      setSelectValue(this.quickProject, this.quickDraft.project);
     this.projectTooltip();
     this.render();
   }
@@ -553,7 +574,7 @@ export class PlannerView extends ItemView {
       const o = el(s, 'option', '', t);
       o.value = v;
     }
-    s.value = options.some((o) => o[0] === value) ? value : '';
+    setSelectValue(s, options.some((o) => o[0] === value) ? value : '');
   }
   private updateOptions(): void {
     const snap = this.plugin.repo.snapshot();
@@ -951,7 +972,7 @@ export class PlannerView extends ItemView {
         : snap.projects.find((p) => p.path === value.slice(8));
       if (entity)
         new EntityModal(this.plugin, value.startsWith('area:') ? 'area' : 'project', entity).open();
-      configure.value = '';
+      setSelectValue(configure, '');
     });
     if (!scopes.length) el(panel, 'p', 'tp-muted', this.w.noBudgets);
     for (const data of scopes) {
@@ -1233,6 +1254,12 @@ export class PlannerView extends ItemView {
       const actions = el(row, 'div', 'tp-subscription-actions');
       button(
         actions,
+        this.w.editSubscription,
+        () => new SubscriptionModal(this.plugin, t).open(),
+        'tp-subscription-edit',
+      );
+      button(
+        actions,
         this.w.recordCharge,
         () => new ChargeModal(this.plugin, t).open(),
         'tp-text-button',
@@ -1356,7 +1383,8 @@ export class PlannerView extends ItemView {
         card.dataset.path = item.task.path;
         card.dataset.key = item.key;
         card.dataset.status = item.status;
-        if (item.task.priority === 'high') card.classList.add('tp-high-priority');
+        if (item.task.priority !== 'normal')
+          card.classList.add(`tp-${item.task.priority}-priority`);
         const heading = el(card, 'div', 'tp-task-heading');
         button(
           heading,
@@ -1367,7 +1395,7 @@ export class PlannerView extends ItemView {
         if (item.task.scheduledTime)
           el(card, 'strong', 'tp-appointment-time', item.task.scheduledTime);
         this.kindBadge(heading, item.task.kind);
-        if (item.task.priority === 'high') this.priorityBadge(heading);
+        if (item.task.priority !== 'normal') this.priorityBadge(heading, item.task.priority);
         const project = this.plugin.repo.project(item.task.project);
         if (project) el(card, 'small', 'tp-muted', this.plugin.projectLabel(project));
         if (item.task.kind === 'payment') {
@@ -1427,7 +1455,7 @@ export class PlannerView extends ItemView {
             } finally {
               if (choice.isConnected) {
                 choice.disabled = exhausted;
-                choice.value = item.status;
+                setSelectValue(choice, item.status);
               }
             }
           });
@@ -1499,11 +1527,12 @@ export class PlannerView extends ItemView {
     if (kind === 'payment') badge.textContent = '$';
     else setIcon(badge, kind === 'meeting' ? 'users-round' : 'flag');
   }
-  private priorityBadge(parent: HTMLElement): void {
-    const badge = el(parent, 'span', 'tp-priority', '!');
-    badge.title = this.w.highPriority;
+  private priorityBadge(parent: HTMLElement, priority: 'low' | 'high'): void {
+    const label = priority === 'high' ? this.w.highPriority : this.w.lowPriority;
+    const badge = el(parent, 'span', 'tp-priority', priority === 'high' ? '!' : '↓');
+    badge.title = label;
     badge.setAttribute('role', 'img');
-    badge.setAttribute('aria-label', this.w.highPriority);
+    badge.setAttribute('aria-label', label);
   }
   private empty(parent = this.main): void {
     el(parent, 'div', 'tp-empty', this.w.empty);
@@ -1550,7 +1579,7 @@ export class PlannerView extends ItemView {
     row.dataset.key = item.key;
     row.dataset.status = item.status;
     row.dataset.date = item.date;
-    if (item.task.priority === 'high') row.classList.add('tp-high-priority');
+    if (item.task.priority !== 'normal') row.classList.add(`tp-${item.task.priority}-priority`);
     const payment = item.task.kind === 'payment';
     const completeLabel = payment
       ? item.status === 'done'
@@ -1589,8 +1618,13 @@ export class PlannerView extends ItemView {
       'tp-task-title',
     );
     title.title = item.task.title;
+    if (compact && item.task.scheduledTime) {
+      title.dataset.scheduledTime = item.task.scheduledTime;
+      title.title = `${item.task.scheduledTime} · ${item.task.title}`;
+      title.setAttribute('aria-label', title.title);
+    }
     this.kindBadge(heading, item.task.kind);
-    if (item.task.priority === 'high') this.priorityBadge(heading);
+    if (item.task.priority !== 'normal') this.priorityBadge(heading, item.task.priority);
     if (item.task.description) {
       const details = el(heading, 'span', 'tp-description-icon');
       setIcon(details, 'file-text');
@@ -1598,17 +1632,21 @@ export class PlannerView extends ItemView {
       details.setAttribute('role', 'img');
       details.setAttribute('aria-label', this.w.description);
     }
+    if (compact && (item.recurring || item.calendarRole === 'deadline')) {
+      const badge = el(heading, 'span', 'tp-calendar-role-icon');
+      const label = item.recurring ? this.w.repeat : this.w.deadline;
+      badge.title = label;
+      badge.setAttribute('role', 'img');
+      badge.setAttribute('aria-label', label);
+      setIcon(badge, item.recurring ? 'repeat' : 'calendar-clock');
+    }
     const meta = el(body, 'div', 'tp-task-meta');
-    if (item.task.scheduledTime) el(meta, 'strong', 'tp-appointment-time', item.task.scheduledTime);
+    if (item.task.scheduledTime && !compact)
+      el(meta, 'strong', 'tp-appointment-time', item.task.scheduledTime);
     const project = this.plugin.repo.project(item.task.project);
     if (project) el(meta, 'span', 'tp-project-label', this.plugin.projectLabel(project));
     else if (item.task.project) el(meta, 'span', '', this.w.unresolved);
-    if (project) title.title += '\n' + this.plugin.projectLabel(project);
-    if (compact && (item.task.scheduledTime || item.task.project)) {
-      const context = el(row, 'div', 'tp-task-context');
-      for (const label of [...meta.children]) context.appendChild(label);
-      row.insertBefore(context, check);
-    }
+    if (project && !compact) title.title += '\n' + this.plugin.projectLabel(project);
     if (isOverdue(item, day())) el(meta, 'span', 'tp-overdue-label', this.w.overdue);
     if (!compact && item.date)
       el(
@@ -1620,7 +1658,7 @@ export class PlannerView extends ItemView {
       );
     if (item.calendarRole === 'work' && item.task.due && item.date !== item.task.due)
       el(meta, 'span', 'tp-deadline-label', `${this.w.deadline}: ${this.pretty(item.task.due)}`);
-    this.taskTimes(meta, item);
+    this.taskTimes(meta, item, compact);
     if (item.recurring)
       el(
         meta,
@@ -1646,7 +1684,31 @@ export class PlannerView extends ItemView {
     // Compact status lives in the checkbox tooltip/label and color accent.
     el(meta, 'span', 'tp-workflow-label' + (compact ? ' tp-visually-hidden' : ''), statusLabel);
     if (compact) check.title = `${statusLabel} · ${completeLabel}`;
-    const actions = el(row, 'div', 'tp-task-actions');
+    let actionParent: HTMLElement = row;
+    if (compact) {
+      const menu = el(row, 'details', 'tp-card-menu');
+      menu.open = this.calendarDetailed;
+      const summary = el(menu, 'summary', 'tp-card-menu-toggle');
+      summary.title = this.w.taskDetails;
+      summary.setAttribute('aria-label', `${this.w.taskDetails}: ${item.task.title}`);
+      setIcon(summary, 'ellipsis-vertical');
+      menu.addEventListener('toggle', () => {
+        if (menu.isConnected && menu.open && !this.calendarDetailed)
+          this.main.querySelectorAll<HTMLDetailsElement>('.tp-card-menu[open]').forEach((other) => {
+            if (other !== menu) other.open = false;
+          });
+      });
+      menu.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !this.calendarDetailed) {
+          event.preventDefault();
+          menu.open = false;
+          summary.focus();
+        }
+      });
+      menu.appendChild(meta);
+      actionParent = menu;
+    }
+    const actions = el(actionParent, 'div', 'tp-task-actions');
     const fail = iconButton(
       actions,
       'circle-x',
@@ -1666,8 +1728,7 @@ export class PlannerView extends ItemView {
       new MoveModal(this.plugin, item).open(),
     );
     move.disabled = exhausted;
-    if (!compact)
-      iconButton(actions, 'file-text', this.w.note, () => this.plugin.openNote(item.task.path));
+    iconButton(actions, 'file-text', this.w.note, () => this.plugin.openNote(item.task.path));
     iconButton(
       actions,
       'trash-2',
@@ -1770,6 +1831,23 @@ export class PlannerView extends ItemView {
       b.dataset.calendarView = view;
       b.setAttribute('aria-pressed', String(this.calendarView === view));
     }
+    const appearance = el(controls, 'div', 'tp-calendar-appearance');
+    appearance.setAttribute('role', 'group');
+    appearance.setAttribute('aria-label', this.w.taskDetails);
+    for (const [mode, label] of [
+      ['minimal', this.w.minimalView],
+      ['detailed', this.w.detailedView],
+    ] as const) {
+      const toggle = button(appearance, label, () => {
+        this.calendarDetailed = mode === 'detailed';
+        this.render();
+        this.main
+          .querySelector<HTMLElement>(`[data-calendar-appearance=${mode}]`)
+          ?.focus({ preventScroll: true });
+      });
+      toggle.dataset.calendarAppearance = mode;
+      toggle.setAttribute('aria-pressed', String(this.calendarDetailed === (mode === 'detailed')));
+    }
     const visibility = el(controls, 'div', 'tp-calendar-visibility');
     const hide = button(
       visibility,
@@ -1785,6 +1863,20 @@ export class PlannerView extends ItemView {
     stabilizeButton(hide, [this.w.hideCompleted, this.w.showCompleted]);
     hide.dataset.calendarHideDone = 'true';
     hide.setAttribute('aria-pressed', String(this.hideCalendarDone));
+    const failed = button(
+      visibility,
+      this.hideCalendarFailed ? this.w.showFailed : this.w.hideFailed,
+      () => {
+        this.hideCalendarFailed = !this.hideCalendarFailed;
+        this.render();
+        this.main
+          .querySelector<HTMLElement>('[data-calendar-hide-failed]')
+          ?.focus({ preventScroll: true });
+      },
+    );
+    stabilizeButton(failed, [this.w.hideFailed, this.w.showFailed]);
+    failed.dataset.calendarHideFailed = 'true';
+    failed.setAttribute('aria-pressed', String(this.hideCalendarFailed));
     const recurring = button(
       visibility,
       this.hideCalendarRecurring ? this.w.showRecurring : this.w.hideRecurring,
@@ -1822,12 +1914,20 @@ export class PlannerView extends ItemView {
       ),
     );
     const grouped = new Map(dates.map((d) => [d, [] as Occurrence[]]));
+    const continuations = new Map(dates.map((date) => [date, [] as Task[]]));
+    for (const task of tasks) {
+      if (this.hideCalendarDone && task.status === 'done') continue;
+      if (this.hideCalendarFailed && task.status === 'failed') continue;
+      for (const date of calendarContinuations(task, dates)) continuations.get(date)!.push(task);
+    }
     for (const task of tasks.filter((t) => !this.hideCalendarRecurring || !t.recurrence))
       for (const item of calendarItems(task, dates[0]!, dates.at(-1)!)) {
         if (this.hideCalendarDone && item.status === 'done') continue;
+        if (this.hideCalendarFailed && item.status === 'failed') continue;
         grouped.get(item.date)?.push(item);
       }
     const grid = el(this.main, 'div', `tp-calendar-grid tp-calendar-${this.calendarView}-view`);
+    grid.classList.toggle('tp-calendar-detailed', this.calendarDetailed);
     // Keep period navigation and its grid in one outlined calendar surface.
     surface.appendChild(grid);
     this.main.appendChild(surface);
@@ -1881,6 +1981,22 @@ export class PlannerView extends ItemView {
           new TaskModal(this.plugin, undefined, { scheduled: date, project: this.project }).open(),
         'tp-day-number',
       );
+      if (this.calendarView !== 'day') {
+        const number = dateButton.textContent || '';
+        dateButton.replaceChildren();
+        el(dateButton, 'span', 'tp-date-number', number);
+        el(
+          dateButton,
+          'span',
+          'tp-agenda-date',
+          new Intl.DateTimeFormat(this.locale(), {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'long',
+            timeZone: 'UTC',
+          }).format(utc(date)),
+        );
+      }
       dateButton.title = this.w.add + ' · ' + date;
       dateButton.setAttribute('aria-label', dateButton.title);
       const load = dayLoad(tasks, date, this.plugin.settings.dailyCapacityMinutes ?? 480);
@@ -1908,6 +2024,25 @@ export class PlannerView extends ItemView {
       );
       for (const item of items.filter((i) => i.calendarRole !== 'deadline'))
         this.row(cell, item, true);
+      for (const task of continuations.get(date)!) {
+        const mark = button(
+          cell,
+          '',
+          () => new TaskModal(this.plugin, taskItem(task, day())).open(),
+          `tp-calendar-continuation tp-${task.status}`,
+        );
+        mark.dataset.path = task.path;
+        mark.dataset.status = task.status;
+        const title = el(mark, 'span', 'tp-continuation-title', task.title);
+        if (task.scheduledTime) title.dataset.scheduledTime = task.scheduledTime;
+        this.kindBadge(mark, task.kind);
+        if (task.priority !== 'normal') {
+          mark.classList.add(`tp-${task.priority}-priority`);
+          this.priorityBadge(mark, task.priority);
+        }
+        mark.title = `${task.scheduledTime ? task.scheduledTime + ' · ' : ''}${task.title} · ${this.w.continues} · ${this.w[task.status]} · ${this.pretty(task.scheduled)} → ${this.pretty(task.due)}`;
+        mark.setAttribute('aria-label', mark.title);
+      }
       const payments = subscriptions
         .filter((t) => paymentOn(t, date))
         .sort((a, b) => a.title.localeCompare(b.title) || a.path.localeCompare(b.path));
@@ -1942,7 +2077,7 @@ export class PlannerView extends ItemView {
         row.dataset.from = item.date;
         row.dataset.to = item.end;
         const range = `${this.w.deadline}: ${this.pretty(item.task.due)}`;
-        row.title = `${item.task.title} · ${range} · ${this.expenseProject(item.task)}`;
+        row.title = `${item.task.title} · ${range}`;
         row.querySelector<HTMLElement>('.tp-task-title')!.title = row.title;
         el(row.querySelector<HTMLElement>('.tp-task-meta')!, 'span', 'tp-range-dates', range);
       }

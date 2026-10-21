@@ -17,6 +17,11 @@ import { TaskModal, ImportModal, SubscriptionModal } from './ui/modals';
 import { DateFormat } from './core/dates';
 import { Project } from './core/model';
 import { words, messageText } from './ui/i18n';
+import { enhanceSelect } from './ui/selection';
+function themedDropdown<T extends { selectEl: HTMLSelectElement }>(dropdown: T): T {
+  enhanceSelect(dropdown.selectEl);
+  return dropdown;
+}
 export interface PlannerSettings {
   folder: string;
   language: 'ru' | 'en';
@@ -170,6 +175,8 @@ class PlannerSettingsTab extends PluginSettingTab {
   }
   /** Searchable settings for Obsidian 1.13+, while display() remains for 1.7.2–1.12. */
   getSettingDefinitions(): SettingDefinitionItem[] {
+    this.containerEl.lang = this.planner.settings.language;
+    this.containerEl.classList.add('tp-settings');
     const w = words(this.planner.settings.language);
     const refreshViews = (): void => {
       for (const leaf of this.planner.app.workspace.getLeavesOfType(VIEW_TYPE))
@@ -199,7 +206,7 @@ class PlannerSettingsTab extends PluginSettingTab {
         name: w.language,
         render: (setting) => {
           setting.addDropdown((dropdown) =>
-            dropdown
+            themedDropdown(dropdown)
               .addOptions({ ru: 'Русский', en: 'English' })
               .setValue(this.planner.settings.language)
               .onChange(async (value) => {
@@ -218,7 +225,7 @@ class PlannerSettingsTab extends PluginSettingTab {
         desc: w.dateFormatHelp,
         render: (setting) => {
           setting.addDropdown((dropdown) =>
-            dropdown
+            themedDropdown(dropdown)
               .addOptions({ dmy: 'DD.MM.YYYY', mdy: 'MM/DD/YYYY', iso: 'YYYY-MM-DD' })
               .setValue(this.planner.settings.dateFormat)
               .onChange(async (value) => {
@@ -251,7 +258,7 @@ class PlannerSettingsTab extends PluginSettingTab {
         desc: w.uiScaleHelp,
         render: (setting) => {
           setting.addDropdown((dropdown) =>
-            dropdown
+            themedDropdown(dropdown)
               .addOptions({
                 '85': '85%',
                 '90': '90%',
@@ -286,6 +293,8 @@ class PlannerSettingsTab extends PluginSettingTab {
     this.renderLegacySettings();
   }
   private renderLegacySettings(): void {
+    this.containerEl.lang = this.planner.settings.language;
+    this.containerEl.classList.add('tp-settings');
     const w = words(this.planner.settings.language);
     this.containerEl.replaceChildren();
     new Setting(this.containerEl)
@@ -305,7 +314,7 @@ class PlannerSettingsTab extends PluginSettingTab {
         }),
       );
     new Setting(this.containerEl).setName(w.language).addDropdown((d) =>
-      d
+      themedDropdown(d)
         .addOptions({ ru: 'Русский', en: 'English' })
         .setValue(this.planner.settings.language)
         .onChange(async (value) => {
@@ -321,7 +330,7 @@ class PlannerSettingsTab extends PluginSettingTab {
       .setName(w.dateFormat)
       .setDesc(w.dateFormatHelp)
       .addDropdown((d) =>
-        d
+        themedDropdown(d)
           .addOptions({ dmy: 'DD.MM.YYYY', mdy: 'MM/DD/YYYY', iso: 'YYYY-MM-DD' })
           .setValue(this.planner.settings.dateFormat)
           .onChange(async (value) => {
@@ -348,7 +357,7 @@ class PlannerSettingsTab extends PluginSettingTab {
       .setName(w.uiScale)
       .setDesc(w.uiScaleHelp)
       .addDropdown((d) =>
-        d
+        themedDropdown(d)
           .addOptions({
             '85': '85%',
             '90': '90%',

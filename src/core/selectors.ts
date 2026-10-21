@@ -58,12 +58,14 @@ export function isOverdue(item: Occurrence, today: string): boolean {
     isActive(item.status) && item.task.kind !== 'subscription' && !!item.end && item.end < today
   );
 }
+const priorityRank = (priority: Task['priority']): number =>
+  priority === 'high' ? 2 : priority === 'low' ? 0 : 1;
 function compareItems(a: Occurrence, b: Occurrence, withinDay = false): number {
   return (
     (withinDay ? 0 : a.date.localeCompare(b.date)) ||
     (a.task.scheduledTime || '24:00').localeCompare(b.task.scheduledTime || '24:00') ||
     Number(TERMINAL.has(a.status)) - Number(TERMINAL.has(b.status)) ||
-    Number(b.task.priority === 'high') - Number(a.task.priority === 'high') ||
+    priorityRank(b.task.priority) - priorityRank(a.task.priority) ||
     a.task.title.localeCompare(b.task.title)
   );
 }

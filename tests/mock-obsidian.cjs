@@ -212,6 +212,7 @@ class Setting {
     const node = document.createElement('select');
     this.label.append(node);
     const control = {
+      selectEl: node,
       addOptions(options) {
         for (const [value, text] of Object.entries(options)) {
           const option = document.createElement('option');

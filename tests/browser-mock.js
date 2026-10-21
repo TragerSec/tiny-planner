@@ -175,6 +175,7 @@ class Setting {
     const node = document.createElement('select');
     this.label.append(node);
     const control = {
+      selectEl: node,
       addOptions(options) {
         for (const [value, text] of Object.entries(options)) {
           const option = document.createElement('option');
@@ -235,13 +236,19 @@ const iconPaths = {
   'filter-x': '<path d="M3 3h18l-7 9v7l-4 2V12ZM16 16l5 5m0-5-5 5"/>',
   pencil: '<path d="m15 4 5 5L7 22H2v-5ZM15 4l3-3 5 5-3 3"/>',
 };
+iconPaths['calendar-clock'] =
+  '<rect x="3" y="4" width="15" height="16" rx="2"/><path d="M3 9h15M7 2v4M14 2v4"/><circle cx="17" cy="17" r="5"/><path d="M17 14v3l2 1"/>';
 function setIcon(n, icon) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('stroke', 'currentColor');
   svg.setAttribute('stroke-width', '1.7');
   svg.setAttribute('fill', 'none');
-  svg.innerHTML = iconPaths[icon] || iconPaths.circle;
+  svg.setAttribute('data-icon', icon);
+  svg.innerHTML =
+    icon === 'ellipsis-vertical'
+      ? '<circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>'
+      : iconPaths[icon] || iconPaths.circle;
   n.append(svg);
 }
 const notices = [];

@@ -27,7 +27,7 @@ export interface TaskDraft {
   recurrence: string;
   kind: Kind;
   minutes: number;
-  priority: 'normal' | 'high';
+  priority: 'low' | 'normal' | 'high';
   amount?: number | null;
   currency?: string;
   paidOn?: string;
@@ -303,7 +303,59 @@ export class TaskService {
       await this.patchTask(task.path, (current) => {
         if (String(current.taskType ?? current.kind).toLowerCase() !== 'subscription')
           throw new Error('This note is no longer a subscription.');
-        Object.assign(current, fm);
+        const live = normalizeTask(task.path, current);
+        const projects = this.repo.snapshot().projects;
+        const projectPath = (raw: string): string => {
+          if (!raw) return '';
+          const full = raw.endsWith('.md') ? raw : raw + '.md';
+          if (projects.some((p) => p.path === full)) return full;
+          const aliases = projects.filter(
+            (p) => p.title === raw || p.path.split('/').pop()?.replace(/\.md$/i, '') === raw,
+          );
+          if (!raw.includes('/') && aliases.length > 1) return raw;
+          const linked = this.app.metadataCache.getFirstLinkpathDest(raw, task.path);
+          if (linked && projects.some((p) => p.path === linked.path)) return linked.path;
+          return aliases.length === 1 ? aliases[0]!.path : raw;
+        };
+        const fields = (value: Task): SubscriptionDraft => ({
+          title: value.title,
+          description: value.description,
+          project: projectPath(value.project),
+          amount: value.amount,
+          currency: value.currency,
+          billingPeriod: value.billingPeriod,
+          scheduled: value.scheduled,
+          active: value.subscriptionActive,
+        });
+        const before = fields(task),
+          now = fields(live);
+        const edited = { ...draft, title: draft.title.trim(), project: projectPath(draft.project) };
+        const keys: (keyof SubscriptionDraft)[] = [
+          'title',
+          'description',
+          'project',
+          'amount',
+          'currency',
+          'billingPeriod',
+          'scheduled',
+          'active',
+        ];
+        const changed = keys.filter((key) => edited[key] !== before[key]);
+        // Validate every conflict before touching frontmatter: partial saves are forbidden.
+        for (const key of changed)
+          if (now[key] !== before[key] && now[key] !== edited[key])
+            throw new Error(
+              'Subscription was changed elsewhere. Reopen it and repeat your changes.',
+            );
+        for (const key of changed) {
+          if (key === 'active') {
+            current.subscriptionActive = edited.active;
+            current.status = edited.active ? 'todo' : 'done';
+          } else if (key === 'project')
+            current.project = edited.project ? `[[${edited.project}]]` : '';
+          else if (key === 'scheduled') current.scheduled = edited.scheduled || null;
+          else current[key] = edited[key];
+        }
       });
     else await this.createNote('task', draft.title, fm);
   }

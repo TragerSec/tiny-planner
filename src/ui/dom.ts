@@ -11,6 +11,7 @@ import {
   dateKey,
 } from '../core/dates';
 import { setIcon } from 'obsidian';
+import { enhanceSelect } from './selection';
 import { words } from './i18n';
 export function el<K extends keyof HTMLElementTagNameMap>(
   parent: HTMLElement,
@@ -86,6 +87,7 @@ export function select(
     o.value = v;
   }
   s.value = value;
+  enhanceSelect(s);
   return s;
 }
 
@@ -368,7 +370,7 @@ function attachClock(wrapper: HTMLElement, input: HTMLInputElement, language: st
           String(n).padStart(2, '0'),
           String(n).padStart(2, '0'),
         ]),
-        '09',
+        value.slice(0, 2),
       );
       hours.setAttribute('aria-label', w.clockHours);
       const minutes = select(
@@ -377,14 +379,12 @@ function attachClock(wrapper: HTMLElement, input: HTMLInputElement, language: st
           String(n).padStart(2, '0'),
           String(n).padStart(2, '0'),
         ]),
-        '00',
+        value.slice(3, 5),
       );
       minutes.setAttribute('aria-label', w.clockMinutes);
       const actions = el(popup, 'div', 'tp-picker-actions');
       button(actions, w.clearTime, () => apply(''));
       button(actions, w.applyTime, () => apply(`${hours.value}:${minutes.value}`), 'mod-cta');
-      hours.value = value.slice(0, 2);
-      minutes.value = value.slice(3, 5);
       popup.hidden = false;
       popup.dataset.open = 'true';
       if (popup.showPopover) popup.showPopover();

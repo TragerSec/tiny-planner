@@ -30,7 +30,7 @@ DOM creation and browser constructors use the owning document/window, including 
 
 ## Planning and accounting
 
-`core/calendar.ts` emits unique primary/additional work-day cards and a separate deadline when needed. One-off tasks do not expand into every intermediate day. Estimates distribute integer minutes across work dates with an exact sum. Actual minutes are independent.
+`core/calendar.ts` emits unique primary/additional work-day cards and a separate deadline when needed. Presentation-only continuation marks occupy visible days between start and deadline, inherit task status and add neither work occurrences nor workload. Estimates distribute integer minutes across work dates with an exact sum. Actual minutes are independent.
 
 Work statistics aggregate stored resolutions without running the recurrence generator. Work events use planned/moved days, with deadline and closure fallbacks for undated plans. Financial reports use actual payment dates. Payments/subscriptions are excluded from work totals; currencies stay independent.
 

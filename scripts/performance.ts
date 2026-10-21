@@ -127,6 +127,7 @@ async function measure(fn: () => any, n = 3) {
     );
     const plugin: any = {
       settings: { language: 'ru', folder: 'Planner' },
+      normalizeUiScale: () => 100,
       repo,
       service: new TaskService(app, repo, () => 'Planner'),
       projectLabel: (p: any) => p.title,

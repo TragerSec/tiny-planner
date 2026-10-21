@@ -14,6 +14,7 @@ jobs:
   release:
     if: github.event.deleted != true
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - name: Check out public repository with Git
         run: |

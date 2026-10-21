@@ -1379,15 +1379,15 @@ test('priority sits with titles and guide contains chapters, contents and divide
     click(f.root.querySelector('[data-tab=kanban]'));
     assert.ok(f.root.querySelector('.tp-board-card .tp-task-heading .tp-priority'));
     click(f.root.querySelector('[data-tab=manualTab]'));
-    assert.equal(f.root.querySelectorAll('.tp-manual section').length, 11);
-    assert.equal(f.root.querySelectorAll('.tp-manual-divider').length, 10);
-    assert.equal(f.root.querySelectorAll('ol.tp-manual-links a.tp-manual-link').length, 11);
+    assert.equal(f.root.querySelectorAll('.tp-manual section').length, 12);
+    assert.equal(f.root.querySelectorAll('.tp-manual-divider').length, 11);
+    assert.equal(f.root.querySelectorAll('ol.tp-manual-links a.tp-manual-link').length, 12);
     const contents = f.root.querySelector('.tp-manual-contents')!;
     assert.equal(contents.getAttribute('aria-label'), null);
     for (const link of f.root.querySelectorAll<HTMLAnchorElement>('.tp-manual-link')) {
       assert.ok(f.root.querySelector(link.getAttribute('href')!));
     }
-    assert.equal(f.root.querySelectorAll('.tp-manual-heading .tp-manual-number').length, 11);
+    assert.equal(f.root.querySelectorAll('.tp-manual-heading .tp-manual-number').length, 12);
   } finally {
     await f.close();
   }
@@ -1522,7 +1522,7 @@ test('boards use the same terminal state classes as calendar and disclose projec
   }
 });
 
-test('task context stays visible in lists, calendar and boards; overdue repeats retain their meaning', async () => {
+test('task context is available in lists, calendar details and boards; overdue repeats retain their meaning', async () => {
   const f = await fixture();
   try {
     const area = await f.plugin.service.createNote('area', 'Work', {});
@@ -1545,7 +1545,12 @@ test('task context stays visible in lists, calendar and boards; overdue repeats 
         n.textContent?.includes('Late repeat'),
       )!;
       assert.ok(card);
-      assert.match(card.textContent!, /Work \/ Launch/);
+      if (tab === 'calendar') {
+        assert.equal(
+          card.querySelector('.tp-card-menu .tp-project-label')?.textContent,
+          'Work / Launch',
+        );
+      } else assert.match(card.textContent!, /Work \/ Launch/);
       assert.match(card.querySelector('.tp-overdue-label')!.textContent!, /Просрочено/);
     }
     click(f.root.querySelector('[data-tab=calendar]'));
@@ -2259,7 +2264,11 @@ test('UI bottom-of-day ranges retain full labels, priority, kind, dates and note
     const band = f.root.querySelector<HTMLElement>('.tp-calendar-deadline')!;
     assert.ok(band.querySelector('.tp-kind-badge[data-kind=status]'));
     assert.ok(band.querySelector('.tp-priority'));
-    assert.ok(band.textContent!.includes('Work / Playbooks'));
+    assert.equal(
+      band.querySelector('.tp-card-menu .tp-project-label')?.textContent,
+      'Work / Playbooks',
+    );
+    assert.ok(band.textContent!.includes('Work /'));
     assert.equal(band.dataset.from, addDays(start, 90));
     assert.equal(band.dataset.to, addDays(start, 90));
     assert.equal(band.draggable, true);
@@ -2909,6 +2918,653 @@ test('UI Today board excludes old closed work with future deadlines and keeps hi
     change(f.root.querySelector<HTMLSelectElement>('[data-board-scope]')!, 'all');
     assert.equal(titles().length, 5);
     assert.deepEqual(await Promise.all(files.map((file) => f.app.vault.read(file))), original);
+  } finally {
+    await f.close();
+  }
+});
+
+test('low priority round-trips through the task modal and remains marked across views', async () => {
+  const f = await fixture();
+  try {
+    new TaskModal(f.plugin, undefined, { title: 'Low task', scheduled: day() }).open();
+    let modal = document.querySelector<HTMLElement>('.tp-modal')!;
+    const priority = [...modal.querySelectorAll('select')].find((n) =>
+      [...n.options].some((o) => o.value === 'low'),
+    )!;
+    assert.ok(priority);
+    change(priority, 'low');
+    submit(modal.querySelector('form')!);
+    await tick();
+    const task = f.plugin.repo.snapshot().tasks.find((t) => t.title === 'Low task')!;
+    assert.equal(task.priority, 'low');
+    assert.match(await f.app.vault.read(f.plugin.service.file(task.path)), /priority: low/);
+    for (const tab of ['today', 'calendar', 'kanban']) {
+      click(f.root.querySelector(`[data-tab=${tab}]`));
+      const badge = f.root.querySelector('.tp-low-priority .tp-priority')!;
+      assert.equal(badge.textContent, '↓');
+      assert.equal(badge.getAttribute('aria-label'), 'Низкий приоритет');
+    }
+    click(f.root.querySelector('[data-tab=today]'));
+    click(f.root.querySelector('.tp-task-title'));
+    modal = document.querySelector('.tp-modal')!;
+    const savedPriority = [...modal.querySelectorAll('select')].find((n) =>
+      [...n.options].some((o) => o.value === 'low'),
+    )!;
+    assert.equal(savedPriority.value, 'low');
+    change(savedPriority, 'high');
+    submit(modal.querySelector('form')!);
+    await tick();
+    assert.equal(
+      f.plugin.repo.snapshot().tasks.find((t) => t.path === task.path)?.priority,
+      'high',
+    );
+    assert.equal(f.root.querySelector('.tp-high-priority .tp-priority')?.textContent, '!');
+    await f.plugin.service.undo();
+    assert.equal(f.plugin.repo.snapshot().tasks.find((t) => t.path === task.path)?.priority, 'low');
+  } finally {
+    await f.close();
+  }
+});
+
+test('calendar failed filter is independent of completed and recurring filters and preserves notes', async () => {
+  const f = await fixture();
+  try {
+    for (const status of ['todo', 'failed', 'done'] as const)
+      await f.plugin.service.createTask(draft({ title: `One ${status}`, status }));
+    await f.plugin.service.createTask(
+      draft({ title: 'Repeat failed', recurrence: 'FREQ=DAILY;COUNT=2', status: 'failed' }),
+    );
+    const before = await Promise.all(
+      f.plugin.repo.snapshot().tasks.map((t) => f.app.vault.read(f.plugin.service.file(t.path))),
+    );
+    click(f.root.querySelector('[data-tab=calendar]'));
+    const titles = () =>
+      [...f.root.querySelectorAll(`[data-day="${day()}"] .tp-task-title`)].map(
+        (n) => n.textContent,
+      );
+    for (const view of ['day', 'week', 'month']) {
+      click(f.root.querySelector(`[data-calendar-view=${view}]`));
+      assert.ok(titles().includes('One failed'));
+      click(f.root.querySelector('[data-calendar-hide-failed]'));
+      assert.equal(
+        f.root.querySelector('[data-calendar-hide-failed]')?.getAttribute('aria-pressed'),
+        'true',
+      );
+      assert.ok(!titles().includes('One failed'));
+      assert.ok(!titles().includes('Repeat failed'));
+      assert.ok(titles().includes('One done'));
+      click(f.root.querySelector('[data-calendar-hide-done]'));
+      assert.deepEqual(titles(), ['One todo']);
+      click(f.root.querySelector('[data-calendar-hide-recurring]'));
+      click(f.root.querySelector('[data-calendar-hide-failed]'));
+      assert.ok(titles().includes('One failed'));
+      assert.ok(!titles().includes('Repeat failed'));
+      click(f.root.querySelector('[data-calendar-hide-done]'));
+      click(f.root.querySelector('[data-calendar-hide-recurring]'));
+    }
+    assert.deepEqual(
+      await Promise.all(
+        f.plugin.repo.snapshot().tasks.map((t) => f.app.vault.read(f.plugin.service.file(t.path))),
+      ),
+      before,
+    );
+    f.plugin.settings.language = 'en';
+    f.view.rebuild();
+    assert.equal(f.root.querySelector('[data-calendar-hide-failed]')?.textContent, 'Hide failed');
+  } finally {
+    await f.close();
+  }
+});
+
+test('explicit subscription edit saves every field without changing path or charge history and supports Undo', async () => {
+  const f = await fixture();
+  try {
+    const file = await f.plugin.service.createNote('task', 'Subscription', {
+      taskType: 'subscription',
+      amount: 12,
+      currency: 'USD',
+      billingPeriod: 'monthly',
+      scheduled: day(),
+      subscriptionActive: true,
+      custom: 'keep',
+      topCharges: { '2026-09-01': { amount: 10, currency: 'USD', paidOn: '2026-09-01' } },
+    });
+    const before = await f.app.vault.read(file);
+    click(f.root.querySelector('[data-tab=subscriptions]'));
+    click(byText(f.root, 'Подписки'));
+    click(f.root.querySelector('.tp-subscription-edit'));
+    const modal = document.querySelector<HTMLElement>('.tp-modal')!;
+    assert.equal(modal.querySelector('h2')?.textContent, 'Редактировать подписку');
+    const inputs = modal.querySelectorAll('input');
+    inputs[0]!.value = 'Renamed subscription';
+    const amount = modal.querySelector<HTMLInputElement>('input[type=number]')!;
+    amount.value = '35.5';
+    const currency = [...inputs].find((n) => n.value === 'USD')!;
+    currency.value = 'EUR';
+    const period = [...modal.querySelectorAll('select')].find((n) =>
+      [...n.options].some((o) => o.value === 'yearly'),
+    )!;
+    change(period, 'yearly');
+    const date = modal.querySelector<HTMLInputElement>('.tp-date')!;
+    date.value = formatDate(addDays(day(), 4), f.plugin.settings.dateFormat);
+    const active = [...modal.querySelectorAll('select')].find((n) =>
+      [...n.options].some((o) => o.value === 'cancelled'),
+    )!;
+    change(active, 'cancelled');
+    modal.querySelector('textarea')!.value = 'New description';
+    submit(modal.querySelector('form')!);
+    await tick();
+    const edited = f.plugin.repo.snapshot().tasks.find((t) => t.path === file.path)!;
+    assert.equal(edited.title, 'Renamed subscription');
+    assert.equal(edited.amount, 35.5);
+    assert.equal(edited.currency, 'EUR');
+    assert.equal(edited.billingPeriod, 'yearly');
+    assert.equal(edited.scheduled, addDays(day(), 4));
+    assert.equal(edited.subscriptionActive, false);
+    assert.equal(edited.description, 'New description');
+    assert.deepEqual(edited.charges, {
+      '2026-09-01': { amount: 10, currency: 'USD', paidOn: '2026-09-01' },
+    });
+    assert.match(await f.app.vault.read(file), /custom: keep/);
+    await f.plugin.service.undo();
+    assert.equal(await f.app.vault.read(file), before);
+  } finally {
+    await f.close();
+  }
+});
+
+test('priority ordering separates high, normal and low without changing time precedence', async () => {
+  const f = await fixture();
+  try {
+    await f.plugin.service.createTask(draft({ title: 'A low', priority: 'low' }));
+    await f.plugin.service.createTask(draft({ title: 'B normal', priority: 'normal' }));
+    await f.plugin.service.createTask(draft({ title: 'Z high', priority: 'high' }));
+    await f.plugin.service.createTask(
+      draft({ title: 'Timed low', priority: 'low', scheduledTime: '08:00' }),
+    );
+    assert.deepEqual(
+      [...f.root.querySelectorAll('.tp-task-title')].map((n) => n.textContent),
+      ['Timed low', 'Z high', 'B normal', 'A low'],
+    );
+  } finally {
+    await f.close();
+  }
+});
+
+test('subscription title-only form save preserves external price, description, activity and charge changes', async () => {
+  const f = await fixture();
+  try {
+    await f.plugin.service.saveSubscription({
+      title: 'Safe subscription',
+      description: 'before',
+      project: '',
+      amount: 12,
+      currency: 'USD',
+      billingPeriod: 'monthly',
+      scheduled: day(),
+      active: true,
+    });
+    const task = f.plugin.repo.snapshot().tasks[0]!;
+    new SubscriptionModal(f.plugin, task).open();
+    const file = f.plugin.service.file(task.path);
+    await f.app.fileManager.processFrontMatter(file, (fm: any) => {
+      fm.amount = 99;
+      fm.description = 'external';
+      fm.subscriptionActive = false;
+      fm.status = 'done';
+      fm.topCharges = { [day()]: { amount: 8, currency: 'EUR', paidOn: day() } };
+      fm.custom = 'untouched';
+    });
+    await f.plugin.repo.refresh(file);
+    const form = document.querySelector<HTMLFormElement>('.tp-modal form')!;
+    form.querySelector<HTMLInputElement>('input[type=text]')!.value = 'New title';
+    submit(form);
+    await tick();
+    const live = f.plugin.repo.snapshot().tasks[0]!;
+    assert.equal(live.title, 'New title');
+    assert.equal(live.amount, 99);
+    assert.equal(live.description, 'external');
+    assert.equal(live.subscriptionActive, false);
+    assert.equal(live.charges?.[day()]?.amount, 8);
+    assert.match(await f.app.vault.read(file), /custom: untouched/);
+    await f.plugin.service.undo();
+    const restored = f.plugin.repo.snapshot().tasks[0]!;
+    assert.equal(restored.title, 'Safe subscription');
+    assert.equal(restored.amount, 99);
+    assert.equal(restored.description, 'external');
+  } finally {
+    await f.close();
+  }
+});
+
+test('subscription conflicting field rejects the whole save, leaves the form open and shows a localized error', async () => {
+  const f = await fixture();
+  try {
+    await f.plugin.service.saveSubscription({
+      title: 'Conflict subscription',
+      description: 'before',
+      project: '',
+      amount: 12,
+      currency: 'USD',
+      billingPeriod: 'monthly',
+      scheduled: day(),
+      active: true,
+    });
+    const task = f.plugin.repo.snapshot().tasks[0]!;
+    new SubscriptionModal(f.plugin, task).open();
+    const file = f.plugin.service.file(task.path);
+    const form = document.querySelector<HTMLFormElement>('.tp-modal form')!;
+    form.querySelector<HTMLInputElement>('input[type=text]')!.value = 'Must not save';
+    form.querySelector<HTMLInputElement>('input[type=number]')!.value = '25';
+    await f.app.fileManager.processFrontMatter(file, (fm: any) => {
+      fm.amount = 99;
+    });
+    const before = await f.app.vault.read(file);
+    submit(form);
+    await tick();
+    assert.equal(await f.app.vault.read(file), before);
+    assert.ok(form.isConnected);
+    assert.ok(mock.notices.some((s: string) => s.includes('Подписка изменена вне формы')));
+    assert.equal(form.querySelector<HTMLButtonElement>('button[type=submit]')!.disabled, false);
+  } finally {
+    await f.close();
+  }
+});
+
+test('two stale subscription forms merge disjoint changes but cannot silently undo external cancellation', async () => {
+  const f = await fixture();
+  try {
+    const original = {
+      title: 'Two forms',
+      description: 'before',
+      project: '',
+      amount: 12,
+      currency: 'USD',
+      billingPeriod: 'monthly' as const,
+      scheduled: day(),
+      active: true,
+    };
+    await f.plugin.service.saveSubscription(original);
+    const baseline = f.plugin.repo.snapshot().tasks[0]!;
+    await f.plugin.service.saveSubscription({ ...original, title: 'First edit' }, baseline);
+    await f.plugin.service.saveSubscription({ ...original, description: 'Second edit' }, baseline);
+    const live = f.plugin.repo.snapshot().tasks[0]!;
+    assert.equal(live.title, 'First edit');
+    assert.equal(live.description, 'Second edit');
+    await f.plugin.service.subscriptionActive(live, false);
+    await f.plugin.service.saveSubscription({ ...original, amount: 25 }, baseline);
+    assert.equal(f.plugin.repo.snapshot().tasks[0]?.subscriptionActive, false);
+    assert.equal(f.plugin.repo.snapshot().tasks[0]?.amount, 25);
+  } finally {
+    await f.close();
+  }
+});
+
+test('themed selects provide keyboard selection, safe text, search, pagination and live native updates', async () => {
+  const f = await fixture();
+  try {
+    const { select } = await import('../src/ui/dom');
+    const host = document.createElement('div');
+    host.lang = 'en';
+    f.root.append(host);
+    const options: [string, string][] = Array.from({ length: 20 }, (_, i) => [
+      String(i),
+      `Option ${String(i).padStart(2, '0')}`,
+    ]);
+    options.push(['unsafe', '<img src=x onerror=alert(1)>']);
+    const native = select(host, options, '2');
+    native.setAttribute('aria-label', 'Safe choice');
+    const wrapper = native.parentElement!;
+    const trigger = wrapper.querySelector<HTMLButtonElement>('.tp-select-trigger')!;
+    click(trigger);
+    assert.equal(trigger.getAttribute('aria-expanded'), 'true');
+    assert.equal(wrapper.querySelectorAll('.tp-select-option').length, 8);
+    click(wrapper.querySelector('[aria-label="Next options"]'));
+    assert.match(wrapper.querySelector('.tp-select-pager')!.textContent!, /2 \/ 3/);
+    const search = wrapper.querySelector<HTMLInputElement>('.tp-select-search')!;
+    search.value = '19';
+    search.dispatchEvent(new window.Event('input', { bubbles: true }));
+    assert.equal(wrapper.querySelectorAll('.tp-select-option').length, 1);
+    click(wrapper.querySelector('.tp-select-option'));
+    assert.equal(native.value, '19');
+    assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+    assert.equal(document.activeElement, trigger);
+    trigger.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    wrapper
+      .querySelector('.tp-select-options')!
+      .dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    assert.equal(native.value, '0');
+    native.value = 'unsafe';
+    native.dispatchEvent(new window.Event('change', { bubbles: true }));
+    assert.equal(
+      trigger.querySelector('.tp-select-value')?.textContent,
+      '<img src=x onerror=alert(1)>',
+    );
+    assert.equal(wrapper.querySelector('img'), null);
+    native.disabled = true;
+    await tick();
+    assert.equal(trigger.disabled, true);
+    native.disabled = false;
+    await tick();
+    click(trigger);
+    document.body.dispatchEvent(new window.Event('pointerdown', { bubbles: true }));
+    assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+  } finally {
+    await f.close();
+  }
+});
+
+test('programmatic selection updates presentation without running change handlers', async () => {
+  const f = await fixture();
+  try {
+    const { select } = await import('../src/ui/dom');
+    const { setSelectValue } = await import('../src/ui/selection');
+    const native = select(f.root, [['', 'Choose'], ['a', 'Alpha']], 'a');
+    let changes = 0;
+    native.addEventListener('change', () => changes++);
+    setSelectValue(native, '');
+    assert.equal(native.parentElement!.querySelector('.tp-select-value')?.textContent, 'Choose');
+    assert.equal(changes, 0);
+    click(native.parentElement!.querySelector('.tp-select-trigger'));
+    native.disabled = true;
+    await tick();
+    assert.equal(native.parentElement!.querySelector('.tp-select-trigger')?.getAttribute('aria-expanded'), 'false');
+  } finally {
+    await f.close();
+  }
+});
+
+test('clock opens with the saved hour and minute visible and preserves them on apply', async () => {
+  const f = await fixture();
+  try {
+    const modal = new TaskModal(f.plugin, undefined, { scheduledTime: '22:47' });
+    modal.open();
+    click(modal.contentEl.querySelector('.tp-time-picker-button'));
+    const clock = modal.contentEl.querySelector('.tp-clock-popup')!;
+    assert.deepEqual(
+      [...clock.querySelectorAll('.tp-select-value')].map((node) => node.textContent),
+      ['22', '47'],
+    );
+    click(byText(clock as HTMLElement, words('ru').applyTime));
+    assert.equal(modal.contentEl.querySelector<HTMLInputElement>('.tp-time')?.value, '22:47');
+    modal.close();
+  } finally {
+    await f.close();
+  }
+});
+
+test('choice panel height fitting is bounded and does not recurse through rendering', async () => {
+  const f = await fixture();
+  try {
+    const { select } = await import('../src/ui/dom');
+    const native = select(f.root, Array.from({ length: 40 }, (_, n) => [String(n), `Item ${n}`]), '39');
+    const panel = native.parentElement!.querySelector<HTMLElement>('.tp-select-panel')!;
+    let measurements = 0;
+    panel.getBoundingClientRect = () => {
+      measurements++;
+      return { width: 200, height: 10000, left: 0, right: 200, top: 0, bottom: 10000, x: 0, y: 0, toJSON() {} };
+    };
+    click(native.parentElement!.querySelector('.tp-select-trigger'));
+    assert.equal(panel.querySelectorAll('.tp-select-option').length, 1);
+    assert.ok(measurements <= 10, `Unbounded fitting: ${measurements}`);
+    assert.match(panel.querySelector('.tp-select-pager')!.textContent!, /40 \/ 40/);
+  } finally {
+    await f.close();
+  }
+});
+
+test('subscription merge accepts an unchanged legacy project alias as the canonical project', async () => {
+  const f = await fixture();
+  try {
+    const a = await f.plugin.service.createNote('project', 'Alias A', {});
+    const b = await f.plugin.service.createNote('project', 'Alias B', {});
+    const file = await f.plugin.service.createNote('task', 'Alias subscription', {
+      taskType: 'subscription',
+      project: '[[Alias A]]',
+      amount: 12,
+      currency: 'USD',
+      billingPeriod: 'monthly',
+      subscriptionActive: true,
+    });
+    const task = f.plugin.repo.snapshot().tasks.find((t) => t.path === file.path)!;
+    assert.equal(task.project, a.path);
+    await f.plugin.service.saveSubscription(
+      {
+        title: task.title,
+        description: task.description,
+        project: b.path,
+        amount: task.amount,
+        currency: task.currency,
+        billingPeriod: task.billingPeriod,
+        scheduled: task.scheduled,
+        active: task.subscriptionActive,
+      },
+      task,
+    );
+    assert.equal(f.plugin.repo.snapshot().tasks.find((t) => t.path === file.path)?.project, b.path);
+  } finally {
+    await f.close();
+  }
+});
+
+test('calendar discloses metadata via ellipsis and range marks have no completion controls', async () => {
+  const f = await fixture();
+  try {
+    const area = await f.plugin.service.createNote('area', 'Hidden sphere', {});
+    const project = await f.plugin.service.createNote('project', 'Visible project', {
+      area: area.path,
+    });
+    await f.plugin.service.createTask(
+      draft({
+        title: 'Minimal range',
+        project: project.path,
+        scheduled: day(),
+        due: addDays(day(), 3),
+        scheduledTime: '14:30',
+        plannedMinutes: 60,
+        description: '<b>literal</b>',
+        priority: 'low',
+        kind: 'meeting',
+      }),
+    );
+    click(f.root.querySelector('[data-tab=calendar]'));
+    const row = f.root.querySelector(`[data-day="${day()}"] .tp-task`)!;
+    const menu = row.querySelector<HTMLDetailsElement>('.tp-card-menu')!;
+    assert.equal(menu.open, false);
+    assert.equal(
+      menu.querySelector('.tp-project-label')?.textContent,
+      'Hidden sphere / Visible project',
+    );
+    assert.ok(row.textContent?.includes('Hidden sphere'));
+    assert.equal(row.querySelector('.tp-task-body > .tp-task-meta'), null);
+    assert.equal(row.querySelector<HTMLElement>('.tp-task-title')?.dataset.scheduledTime, '14:30');
+    assert.equal(menu.querySelector('.tp-appointment-time'), null);
+    assert.ok(menu.querySelector('.tp-planned-minutes'));
+    assert.ok(row.querySelector('.tp-task-heading .tp-kind-badge'));
+    assert.ok(row.querySelector('.tp-task-heading .tp-priority'));
+    menu.open = true;
+    menu.dispatchEvent(new f.dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(menu.open, false);
+    const mark = f.root.querySelector(
+      `[data-day="${addDays(day(), 1)}"] .tp-calendar-continuation`,
+    )!;
+    assert.ok(mark);
+    assert.equal(mark.querySelector<HTMLElement>('.tp-continuation-title')?.dataset.scheduledTime, '14:30');
+    assert.match(mark.getAttribute('aria-label')!, /14:30/);
+    assert.equal(mark.querySelector('[role=checkbox], .tp-check, .tp-task-actions'), null);
+    const task = f.plugin.repo.snapshot().tasks.find((t) => t.title === 'Minimal range')!;
+    const before = await f.app.vault.read(f.plugin.service.file(task.path));
+    click(mark);
+    assert.equal(
+      document.querySelector<HTMLInputElement>('.tp-modal input.tp-date')?.value,
+      formatDate(day(), f.plugin.settings.dateFormat),
+    );
+    assert.equal(await f.app.vault.read(f.plugin.service.file(task.path)), before);
+    click(byText(document.querySelector<HTMLElement>('.tp-modal')!, words('ru').cancel));
+    await f.plugin.service.status(taskItem(task, day()), 'failed');
+    await tick();
+    click(f.root.querySelector('[data-calendar-hide-failed]'));
+    assert.equal(f.root.querySelector('.tp-calendar-continuation'), null);
+    await f.plugin.service.undo();
+    await tick();
+    assert.ok(f.root.querySelector('.tp-calendar-continuation'));
+  } finally {
+    await f.close();
+  }
+});
+
+test('calendar keeps assigned time beside the title in Minimal and Detailed views without duplicate metadata', async () => {
+  const f = await fixture();
+  try {
+    await f.plugin.service.createTask(draft({ title: 'Timed task', scheduledTime: '09:05', due: addDays(day(), 2) }));
+    await f.plugin.service.createTask(draft({ title: 'Untimed task' }));
+    const before = JSON.stringify(f.plugin.repo.snapshot());
+    click(f.root.querySelector('[data-tab=calendar]'));
+    for (const period of ['day', 'week', 'month']) {
+      click(f.root.querySelector(`[data-calendar-view=${period}]`));
+      for (const appearance of ['minimal', 'detailed']) {
+        click(f.root.querySelector(`[data-calendar-appearance=${appearance}]`));
+        for (const title of f.root.querySelectorAll<HTMLElement>('.tp-task-title')) {
+          if (title.textContent === 'Timed task') {
+            assert.equal(title.dataset.scheduledTime, '09:05');
+            assert.match(title.getAttribute('aria-label')!, /09:05/);
+            assert.equal(title.closest('.tp-task')!.querySelector('.tp-task-meta .tp-appointment-time'), null);
+          } else assert.equal(title.hasAttribute('data-scheduled-time'), false);
+        }
+      }
+    }
+    assert.equal(JSON.stringify(f.plugin.repo.snapshot()), before);
+  } finally {
+    await f.close();
+  }
+});
+
+test('calendar continuations follow all statuses and Undo; disclosure uses vertical dots', async () => {
+  const f = await fixture();
+  try {
+    await f.plugin.service.createTask(draft({ title: 'Status range', due: addDays(day(), 3) }));
+    click(f.root.querySelector('[data-tab=calendar]'));
+    const task = () => f.plugin.repo.snapshot().tasks.find((t) => t.title === 'Status range')!;
+    const mark = () => f.root.querySelector<HTMLElement>('.tp-calendar-continuation')!;
+    assert.equal(
+      f.root.querySelector('.tp-card-menu-toggle svg')?.getAttribute('data-icon'),
+      'ellipsis-vertical',
+    );
+    for (const status of ['done', 'failed', 'in-progress', 'backlog', 'todo'] as const) {
+      await f.plugin.service.status(taskItem(task(), day()), status);
+      await tick();
+      assert.equal(mark().dataset.status, status);
+      assert.ok(mark().classList.contains('tp-' + status));
+      assert.ok(mark().getAttribute('aria-label')?.includes(words('ru')[status]));
+      assert.equal(mark().querySelector('[role=checkbox]'), null);
+    }
+    await f.plugin.service.undo();
+    await tick();
+    assert.equal(mark().dataset.status, 'backlog');
+  } finally {
+    await f.close();
+  }
+});
+
+test('calendar appearance expands every task, survives navigation and never writes notes', async () => {
+  const f = await fixture();
+  try {
+    await f.plugin.service.createTask(draft({ title: 'Appearance task', due: addDays(day(), 2) }));
+    click(f.root.querySelector('[data-tab=calendar]'));
+    const menus = () => [...f.root.querySelectorAll<HTMLDetailsElement>('.tp-card-menu')];
+    const task = f.plugin.repo.snapshot().tasks.find((t) => t.title === 'Appearance task')!;
+    const before = await f.app.vault.read(f.plugin.service.file(task.path));
+    assert.ok(menus().length > 0);
+    assert.ok(menus().every((menu) => !menu.open));
+    click(f.root.querySelector('[data-calendar-appearance=detailed]'));
+    await tick();
+    assert.ok(menus().every((menu) => menu.open));
+    assert.equal(
+      f.root.querySelector('[data-calendar-appearance=detailed]')?.getAttribute('aria-pressed'),
+      'true',
+    );
+    assert.ok(f.root.querySelector('.tp-calendar-detailed'));
+    f.root
+      .querySelector('.tp-header')!
+      .dispatchEvent(new f.dom.window.Event('pointerdown', { bubbles: true }));
+    await tick();
+    assert.ok(menus().every((menu) => menu.open));
+    for (const mode of ['day', 'week', 'month']) {
+      click(f.root.querySelector(`[data-calendar-view=${mode}]`));
+      await tick();
+      assert.ok(menus().length > 0 && menus().every((menu) => menu.open));
+    }
+    click(f.root.querySelector('[data-tab=today]'));
+    click(f.root.querySelector('[data-tab=calendar]'));
+    await tick();
+    assert.ok(menus().every((menu) => menu.open));
+    click(f.root.querySelector('[data-calendar-appearance=minimal]'));
+    await tick();
+    assert.ok(menus().every((menu) => !menu.open));
+    assert.equal(await f.app.vault.read(f.plugin.service.file(task.path)), before);
+    f.plugin.settings.language = 'en';
+    f.view.rebuild();
+    assert.equal(
+      f.root.querySelector('[data-calendar-appearance=minimal]')?.textContent,
+      'Minimal view',
+    );
+    assert.equal(
+      f.root.querySelector('[data-calendar-appearance=detailed]')?.textContent,
+      'Detailed view',
+    );
+  } finally {
+    await f.close();
+  }
+});
+
+test('task type Status uses a flag while the final deadline uses calendar-clock', async () => {
+  const f = await fixture();
+  try {
+    await f.plugin.service.createTask(
+      draft({ title: 'Distinct deadline', kind: 'status', due: addDays(day(), 2) }),
+    );
+    click(f.root.querySelector('[data-tab=calendar]'));
+    const card = f.root.querySelector('.tp-calendar-deadline')!;
+    assert.equal(card.querySelector('.tp-kind-badge svg')?.getAttribute('data-icon'), 'flag');
+    assert.equal(
+      card.querySelector('.tp-calendar-role-icon svg')?.getAttribute('data-icon'),
+      'calendar-clock',
+    );
+  } finally {
+    await f.close();
+  }
+});
+
+test('built-in guide provides a localized color and icon legend with distinct deadline and status meanings', async () => {
+  const f = await fixture();
+  try {
+    for (const language of ['ru', 'en'] as const) {
+      f.plugin.settings.language = language;
+      click(f.root.querySelector('[data-tab=manualTab]'));
+      f.view.rebuild();
+      const legend = f.root.querySelector('.tp-manual-legend')!;
+      assert.ok(legend);
+      assert.equal(legend.querySelectorAll('.tp-manual-swatch').length, 5);
+      for (const status of ['backlog', 'todo', 'in-progress', 'done', 'failed'])
+        assert.ok(legend.querySelector(`[data-status="${status}"]`));
+      for (const icon of [
+        'flag',
+        'calendar-clock',
+        'repeat',
+        'file-text',
+        'ellipsis-vertical',
+        'users-round',
+      ])
+        assert.ok(legend.querySelector(`svg[data-icon="${icon}"]`));
+      assert.ok(legend.textContent?.includes(language === 'ru' ? 'Жёлтый' : 'Yellow'));
+      for (const symbol of ['◷', '✓', '?']) assert.ok(legend.textContent?.includes(symbol));
+      assert.ok(legend.textContent?.includes(language === 'ru' ? 'Просрочено' : 'overdue'));
+      assert.ok(
+        [...f.root.querySelectorAll('.tp-manual-link')].some((link) =>
+          link.textContent?.includes(language === 'ru' ? 'Цвета и значки' : 'Colors and icons'),
+        ),
+      );
+    }
   } finally {
     await f.close();
   }

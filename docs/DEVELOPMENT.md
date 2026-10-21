@@ -10,7 +10,7 @@ npm run package
 
 `npm run verify:build` rebuilds the source, compares it byte-for-byte with committed `main.js`, and restores the reviewed file if verification fails. Run it after building and before committing/publishing.
 
-`npm run validate:release` checks manifest/package/lockfile versions, the compatibility map and optional release tag. The 1.0.3 metadata is already set; do not run the version bump script while preparing this release.
+`npm run validate:release` checks manifest/package/lockfile versions, the compatibility map and optional release tag. The 1.0.4 metadata is already set; do not run the version bump script while preparing this release.
 
 The production bundle externally imports only `obsidian`. Keep the guarded engine in `vendor/rrule`; do not replace its import with the unguarded npm entry. Dependency notices are included in the bundle banner. The npm package remains pinned for provenance.
 
@@ -22,9 +22,11 @@ npm run test:browser
 npm run screenshots
 ```
 
-`npm run test:browser` runs `tests/ui.cjs` and the 16-case `tests/theme-matrix.cjs` against the real build with an emulated Obsidian API. The matrix checks 390/520/840/1440px panes, dark/light themes, transparent control states, keyboard focus, Undo, menu drafts, every section and unclipped Day/Week/Month layouts. By default it uses theme fixtures. Set `TP_OBSIDIAN_CSS` and `TP_MINIMAL_CSS` to local CSS files to run the same assertions against actual application and Minimal styles; this remains an API-emulated browser test, not a native Obsidian test. `tests/previews.cjs` captures twenty clean previews using fictional notes. It writes `docs/images/`, with 1200×800 desktop images and a 900×1600 mobile image. These are optional development outputs, excluded from distributed sources, and not proof of real Obsidian device testing.
+`npm run test:browser` runs `tests/ui.cjs` , the 16-case `tests/theme-matrix.cjs` and the 36-layout `tests/mobile.cjs` against the real build with an emulated Obsidian API. The matrix checks 390/520/840/1440px panes, dark/light themes, transparent control states, keyboard focus, Undo, menu drafts, every section and unclipped Day/Week/Month layouts. By default it uses theme fixtures. Set `TP_OBSIDIAN_CSS` and `TP_MINIMAL_CSS` to local CSS files to run the same assertions against actual application and Minimal styles; this remains an API-emulated browser test, not a native Obsidian test. `tests/previews.cjs` captures twenty clean previews using fictional notes. It writes `docs/images/`, with 1200×800 desktop images and a 900×1600 mobile image. These are optional development outputs, excluded from distributed sources, and not proof of real Obsidian device testing.
 
 The static server serves the local bundle and styles only. Browser checks record served SHA-256 hashes for archive comparison. Preview data stays in the browser's in-memory mock vault and is never copied into the user's vault.
+
+Set `TP_SKIP_SCREENSHOTS=1` to omit optional full-page diagnostic captures in `tests/ui.cjs` when the container compositor stalls; behavior assertions still run. Both GitHub jobs have a 20-minute upper bound.
 
 ## Linux containers without /proc
 

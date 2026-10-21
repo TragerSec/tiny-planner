@@ -60,7 +60,7 @@ A subscription stores a title, amount per billing period, three-letter currency 
 
 **First payment** anchors the calendar forecast. A monthly subscription anchored on the 1st appears on the 1st of subsequent months. Annual subscriptions appear once per year and display the full annual charge. If the anchor day is missing, the forecast uses the last day of that month and returns to the original day when possible: January 31 → February 28/29 → March 31. February 29 annual charges use February 28 in non-leap years.
 
-Only active, dated subscriptions appear in the calendar. Cards show the next payment on or after today. Changing the amount or anchor updates future forecasts. Cancellation removes the forecast. Calendar amounts are expected commitments, not a ledger of paid transactions.
+Only active, dated subscriptions appear in the calendar. The subscription catalog shows the next unrecorded payment on or after today; the calendar shows unrecorded billing dates throughout the displayed period, including past dates. Changing the amount or anchor updates future forecasts. Cancellation removes the forecast. Calendar amounts are expected commitments, not a ledger of paid transactions.
 
 The subscription section estimates monthly commitments: active priced subscriptions only, annual amount divided by 12, totals separate by currency. There is no currency conversion or title-based price inference. Subscription payments remain excluded from Today, Inbox, Upcoming, boards, project task progress and work statistics.
 
@@ -88,11 +88,11 @@ Period behavior, chart grouping, financial accounting rules and subscription est
 
 Project dropdowns in task and subscription forms, quick entry and filters sort alphabetically by the visible area/project label, with a stable path tie-breaker. Calendar visibility, subscription cancellation/resumption and series stop/resume controls reserve both state labels’ widths, so pressing them does not resize their buttons.
 
-The calendar renders selected work days, separate deadlines, project deadlines and subscription charges directly, without count or Show more buttons. Deadline-only cards follow ordinary work and subscription charges at the bottom of the same day cell. Full titles and area/project labels wrap without truncation. The completed-task toggle remains calendar-only.
+The calendar renders selected work days, separate deadlines, project deadlines and subscription charges directly, without count or Show more buttons. Deadline-only cards follow ordinary work and subscription charges at the bottom of the same day cell. Closed task titles use up to two lines; the vertical ellipsis reveals full titles and wrapping project labels; areas are shown beside projects. The completed-task toggle remains calendar-only.
 
 ## Work days, deadlines and workload
 
-The task's main **Date** is its primary work day; **Deadline** is the separate final limit. Additional dates already stored in the note's `workDates` field are preserved when editing the task and remain visible in Calendar **Day / Week / Month**. The calendar does not fill every day between the first date and a distant deadline. A work day identical to the deadline creates one card. Each task retains one status and one total of actual minutes. Recurring tasks use their rule instead of extra work days. Work dates after the deadline are rejected. The Today/Tomorrow shortcut changes the primary work day without replacing the deadline.
+The task's main **Date** is its primary work day; **Deadline** is the separate final limit. Additional dates already stored in the note's `workDates` field are preserved when editing the task and remain visible in Calendar **Day / Week / Month**. Subtle continuation marks appear between the start and deadline. They open the original task, have no checkbox and do not create work sessions or additional workload. A work day identical to the deadline creates one card. Each task retains one status and one total of actual minutes. Recurring tasks use their rule instead of extra work days. Work dates after the deadline are rejected. The Today/Tomorrow shortcut changes the primary work day without replacing the deadline.
 
 Dragging a work-day card moves only that day. Dragging a deadline-only card moves only the deadline. Other reschedule actions retain their existing task-range behavior. Existing notes are not migrated or rewritten: their scheduled day and due day become the visible calendar events.
 
@@ -110,8 +110,34 @@ Optional note fields are `workDates`, `plannedMinutes`, `monthlyBudget` and `bud
 
 ## Workload presentation and day agenda
 
-Week/month workload totals show explicitly estimated time, unique one-off tasks without estimates (recurring occurrences counted separately), and the number of overloaded days. Available time is labelled separately in Day and Today, using the daily setting. Unknown estimates display “Time not estimated” and no empty progress bar. Day view is a compact agenda capped at 880 px: full titles and project context, inline desktop actions and wrapping mobile actions. It retains all cards, the date-add action, completion toggle and independent calendar moves.
+Week/month workload totals show explicitly estimated time, unique one-off tasks without estimates (recurring occurrences counted separately), and the number of overloaded days. Available time is labelled separately in Day and Today, using the daily setting. Unknown estimates display “Time not estimated” and no empty progress bar. Day view is a compact agenda capped at 880 px. It uses the same Minimal/Detailed appearance as Week and Month; title, area/project, time and four action buttons are available in the task disclosure. It retains all cards, the date-add action, completion toggle and independent calendar moves.
 
 The document icon sits beside the task title rather than among time metadata. Card estimates are formatted as **Estimate: 3 h** or **Estimate: 1 h 30 min**; the form accepts minutes. The displayed estimate remains the whole task total, while daily workload retains its existing exact distribution.
 
 Completed work cards in lists, the calendar and boards show **Plan: 3 h** and **Spent: 2 h 15 min** when the corresponding estimate and positive spent minutes exist. Unrecorded spent time is omitted, rather than shown as zero; missing estimates are omitted too. Repeats use the selected occurrence’s spent minutes. Reopening retains saved minutes and switches the estimate label back to Estimate.
+
+## Mobile and compact calendar
+
+Small panes (up to 1100 px) show Week and Month as a dated agenda, retaining all tasks, deadlines and subscription forecasts. Larger panes retain the seven-column calendar. Phone navigation wraps and forms use a single column. Only the planner page scrolls; calendar days, navigation and statistics have no internal scroll areas. Compact cards show the status checkbox, up to two title lines and consistent icons. Full titles and project names wrap when details are expanded. The ellipsis reveals project, time and actions inline; the area is shown beside the project from calendar cards. Subtle intermediate-day marks connect start and deadline without checkboxes or additional workload. Escape, outside click or focus leaving the disclosure closes it.
+
+All choice fields use theme-owned controls. Long catalogs offer search and pages; they never introduce a nested scrollbar. Keyboard users can open a field with Enter or an arrow key, move with arrows, choose with Enter, and close with Escape.
+
+**Hide failed / Show failed** sits next to completed and recurring filters. They act independently across Day, Week and Month and do not change notes, work estimates or subscription forecasts.
+
+Priority offers **Low / Normal / High**. High has a red outlined ! marker; Low has a white outlined downward arrow with a transparent background. Normal has no extra marker. Lists, calendar and boards show the priority.
+
+Use **Expenses → Subscriptions → Edit subscription** to change subscription fields. Untouched fields retain outside edits. Independent edits merge; a conflict in the same field rejects the whole save and leaves the form open. Reopen it to resolve the conflict. Charge history, unknown metadata and note bodies are preserved. Undo restores only fields changed by the operation.
+
+Calendar work, deadline and continuation cards use the same closed height with up to two title lines. The vertical ellipsis expands metadata and the full title; opening a task also shows its full name. Continuations inherit all five statuses and their colors; Done and Failed titles are struck through. Filters and Undo keep these marks synchronized.
+
+Calendar appearance: **Minimal view** collapses task context; **Detailed view** expands all task titles, area/project context, time and actions. The choice stays in the open planner view across day/week/month and tab navigation. Outside clicks do not collapse Detailed view. Calendar cards are separated by 7 px on desktop and 8 px in the narrow agenda.
+
+Calendar polish: expanded card context and four equal action buttons align with the title after the checkbox. Project and overdue/deadline labels wrap on their own rows. Period, appearance and visibility controls use consistent button sizing, borders, selected states and keyboard focus, with symmetric responsive groups.
+
+Calendar controls now distinguish their roles: a shared segmented period switch, underlined appearance tabs, and rectangular visibility buttons with state indicators. Thin separators become horizontal in narrow panes; keyboard focus and touch targets remain visible.
+
+Choice menus float above the page and never resize forms or calendar pickers. Search and viewport-adaptive pagination avoid internal scrollbars. Status-type tasks retain a flag; final task deadlines use a calendar-clock icon. Yellow task accents mean In progress, including continuation marks, independently of priority.
+
+The built-in bilingual guide now has a Colors and icons chapter with five status swatches, priority markers and the actual task/action icons. Continuation titles reserve the same empty checkbox gutter as ordinary cards. Only visibility filter buttons use a compact 4 px corner radius and indicators centered 16 px from the leading edge.
+
+Assigned task time (HH:mm) stays visible before the title in both Minimal and Detailed calendar views, including work, deadline and continuation cards. Untimed tasks show no placeholder. This is the optional local appointment time, not the estimated duration.

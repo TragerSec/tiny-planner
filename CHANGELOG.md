@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.4
+
+- Correct workload for multiple repeats moved onto one day and explicitly reopened repeats in legacy closed series.
+- Synchronize programmatic choice labels and saved clock values without firing change handlers; fit menus with a bounded nonrecursive loop.
+- Remove unused task-context styling and date helper; reconcile release, mobile and calendar documentation.
+
+- Equal closed calendar card heights, vertical ellipsis and status-aware continuation marks. Long names expand through the disclosure.
+
+- Minimal calendar cards show checkbox, title and uniform icons; ellipsis reveals project/time/actions, including area/project context. Subtle intermediate-day marks connect start to deadline without workload or completion controls.
+
+- Improve phone layouts, touch controls and readable calendar agendas.
+- Add an independent failed-task calendar filter and low priority; use red/white outlined priority markers.
+- Add explicit subscription editing and protect stale forms with field-level conflict checks.
+- Use consistent themed selection controls with keyboard navigation, searchable long catalogs and pagination.
+- Remove component scroll areas and restore whole-page scrolling over the calendar; use uniform compact heights with full titles available in task details.
+
+
 ## 1.0.3
 
 - Reissue the verified 1.0.2 corrections under a distinct version for a new Community release review; retain the same runtime code, interface and data format.
@@ -41,3 +58,7 @@
 - Payments, subscription charge history, separate currency charts and optional project/area budgets.
 - English/Russian interfaces and Guide, theme accents and responsive controls.
 - Conflict-aware Undo, safe trash, preserved unknown metadata and explicit copy-based legacy import.
+
+Calendar appearance: **Minimal view** collapses task context; **Detailed view** expands all task titles, area/project context, time and actions. The choice stays in the open planner view across day/week/month and tab navigation. Outside clicks do not collapse Detailed view. Calendar cards are separated by 7 px on desktop and 8 px in the narrow agenda.
+
+Calendar cards now retain assigned HH:mm time before the title in Minimal and Detailed views, including continuation marks. No duplicate time appears in the expanded metadata, and untimed tasks keep their previous appearance.

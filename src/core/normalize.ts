@@ -92,7 +92,7 @@ export function normalizeTask(path: string, fm: FM): Task {
         : status === 'failed'
           ? dateKey(fm.failedDate)
           : '',
-    priority: fm.priority === 'high' ? 'high' : 'normal',
+    priority: fm.priority === 'high' ? 'high' : fm.priority === 'low' ? 'low' : 'normal',
     unsupportedRepeat:
       kind !== 'subscription' && recurrence ? validateRule(recurrence, scheduled) : '',
     amount: safeAmount(fm.amount),

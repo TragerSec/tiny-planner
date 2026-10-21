@@ -39,7 +39,7 @@ export interface Task {
   skipped: string[];
   minutes: number;
   resolvedOn: string;
-  priority: 'normal' | 'high';
+  priority: 'low' | 'normal' | 'high';
   unsupportedRepeat: string;
   amount: number | null;
   currency: string;

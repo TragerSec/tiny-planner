@@ -1,3 +1,5 @@
+import { setIcon } from 'obsidian';
+import { STATUSES } from '../core/model';
 import { el } from './dom';
 
 let manualId = 0;
@@ -50,6 +52,7 @@ export function manual(
       heading.focus({ preventScroll: true });
     });
     for (const paragraph of paragraphs) el(block, 'p', '', paragraph);
+    return block;
   };
   section(t('Area → project → task', 'Сфера → проект → задача'), [
     t(
@@ -64,8 +67,8 @@ export function manual(
     ),
     w.appointmentHelp,
     t(
-      'Calendar cells put Done first, then Failed, then unfinished tasks; each group is ordered by time. Other day lists put timed tasks earliest first, followed by untimed tasks. Series time applies to all repeats and survives moves. A small ! marks high priority with a gentle pulse; closed tasks and reduced motion keep a static badge. Overdue tasks are red and labelled Overdue. Payment uses a $ marker, Meeting uses a people icon and Status uses a flag. The type marker and the high-priority ! can appear together. The area and project remain visible. Calendar cards show time and project above the title.',
-      'В календаре сначала идут выполненные задачи, затем не выполненные и открытые; внутри группы они упорядочены по времени. В остальных списках дня сначала идут задачи со временем, затем без него. Время серии относится ко всем повторам и сохраняется при переносе. Значок ! отмечает высокий приоритет. Он мягко пульсирует; у закрытых задач и при отключённой анимации остаётся неподвижным. Просроченные задачи выделены красным и подписаны «Просрочено». Сфера и проект остаются видимыми. В карточках календаря время и проект расположены над названием. Платёж отмечен знаком $, встреча — значком людей, статус — флажком. Маркер типа и восклицательный знак высокого приоритета могут отображаться вместе.',
+      'Calendar cells put Done first, then Failed, then unfinished tasks; each group is ordered by time. Other day lists put timed tasks earliest first, followed by untimed tasks. Series time applies to all repeats and survives moves. A red ! marks high priority with a gentle pulse; a white down arrow marks low priority; closed tasks and reduced motion keep a static badge. Overdue tasks are red and labelled Overdue. Payment uses a $ marker, Meeting uses a people icon and Status uses a flag. The type marker and the high-priority ! can appear together. Calendar cards have equal closed heights and show the checkbox, assigned time before the title when provided, up to two title lines and uniform icons. Assigned time remains visible in Minimal view and on continuation marks. The vertical ellipsis reveals the full title, area/project, estimates and actions. Minimal view collapses these details; Detailed view expands every task. The choice stays with the open planner view across Day, Week and Month. Subtle intermediate-day marks connect start and deadline without checkboxes or workload and follow the task status, including green strikethrough for completed work. Calendar cards stay compact and all remain visible; only the whole planner page scrolls. Narrow panes use a readable dated agenda.',
+      'В календаре сначала идут выполненные задачи, затем не выполненные и открытые; внутри группы они упорядочены по времени. В остальных списках дня сначала идут задачи со временем, затем без него. Время серии относится ко всем повторам и сохраняется при переносе. Красный значок ! отмечает высокий приоритет, белая стрелка вниз — низкий. Маркер высокого приоритета мягко пульсирует; у закрытых задач и при отключённой анимации остаётся неподвижным. Просроченные задачи выделены красным и подписаны «Просрочено». В календаре закрытые карточки имеют одинаковую высоту: чекбокс, указанное время перед названием, до двух строк названия и значки одного размера. Время видно и в минималистичном виде, и на промежуточных отметках. Вертикальное многоточие раскрывает полное название, сферу, проект, оценку длительности и действия. «Минималистичный вид» сворачивает подробности, «Подробный вид» раскрывает все задачи. Выбор сохраняется в открытой вкладке для дня, недели и месяца. Приглушённые отметки между стартом и дедлайном не имеют чекбоксов и не увеличивают нагрузку. Они наследуют статус задачи: выполненные зелёные и зачёркнутые. Карточки остаются компактными и видимыми целиком; прокручивается только вся страница планировщика. В узком окне используется читаемый список дат. Платёж отмечен знаком $, встреча — значком людей, статус — флажком. Маркер типа и восклицательный знак высокого приоритета могут отображаться вместе.',
     ),
     w.manual,
   ]);
@@ -86,17 +89,197 @@ export function manual(
       'Завершение, минуты, пропуск и перенос относятся к выбранному повтору. Следующий день остаётся независимым. Можно удалить один повтор или всю серию. Остановка убирает будущие повторы, сохраняя историю; возобновление возвращает серию. Ежемесячные повторы на 31-е пропускают месяцы без этого дня. Если правило превышает предел расчёта, появится предупреждение: упростите правило или сократите диапазон.',
     ),
   ]);
+  const legend = section(t('Colors and icons', 'Цвета и значки'), [
+    t(
+      'Task colors describe workflow status. Shades are darker in the light theme, with the same meaning. Red overdue labels identify unfinished work past its deadline; they do not mark it Failed. Project deadline cards use the theme accent.',
+      'Цвет задачи обозначает статус работы. В светлой теме оттенки темнее, но значения те же. Красная подпись «Просрочено» отмечает незакрытую задачу с истёкшим сроком и не переводит её в «Не выполнено». Карточки сроков проектов используют акцент темы.',
+    ),
+    t(
+      'Continuation marks between start and deadline inherit the task color and strikethrough. They have no checkbox or separate workload; the empty checkbox gutter keeps their titles aligned. Normal priority has no marker. Filter dots show which calendar filters are enabled; they are not task status indicators.',
+      'Промежуточные отметки между стартом и дедлайном наследуют цвет и зачёркивание задачи. У них нет чекбокса и отдельной нагрузки; пустой отступ под чекбокс выравнивает названия. Обычный приоритет не имеет маркера. Точки на кнопках фильтров показывают, какие фильтры включены, и не обозначают статус задачи.',
+    ),
+  ]);
+  legend.classList.add('tp-manual-legend');
+  const key = el(legend, 'dl', 'tp-manual-key');
+  const addKey = (label: string, description: string, icon = '', symbol = '') => {
+    const row = el(key, 'div', 'tp-manual-key-entry');
+    const term = el(row, 'dt');
+    const mark = el(term, 'span', 'tp-manual-symbol', symbol);
+    mark.setAttribute('aria-hidden', 'true');
+    if (icon) setIcon(mark, icon);
+    el(term, 'span', '', label);
+    el(row, 'dd', '', description);
+    return mark;
+  };
+  const colors = {
+    backlog: t('Gray — postponed work.', 'Серый — отложенная задача.'),
+    todo: t(
+      'Blue / cyan — planned work awaiting action.',
+      'Голубой / синий — задача запланирована и ожидает выполнения.',
+    ),
+    'in-progress': t(
+      'Yellow / amber — work in progress, independently of priority.',
+      'Жёлтый / янтарный — задача в работе, независимо от приоритета.',
+    ),
+    done: t(
+      'Green and strikethrough — completed work.',
+      'Зелёный и зачёркнутое название — выполненная задача.',
+    ),
+    failed: t(
+      'Red / pink and strikethrough — failed work.',
+      'Красный / розовый и зачёркнутое название — задача не выполнена.',
+    ),
+  };
+  for (const status of STATUSES) {
+    const mark = addKey(w[status], colors[status]);
+    mark.dataset.status = status;
+    mark.classList.add('tp-manual-swatch');
+    mark.style.backgroundColor = `var(--tp-status-${status})`;
+  }
+  addKey(
+    w.highPriority,
+    t(
+      'Red outlined exclamation mark — high priority.',
+      'Красный восклицательный знак в рамке — высокий приоритет.',
+    ),
+    '',
+    '!',
+  ).dataset.priority = 'high';
+  addKey(
+    w.lowPriority,
+    t(
+      'White outlined down arrow — low priority.',
+      'Белая стрелка вниз в рамке — низкий приоритет.',
+    ),
+    '',
+    '↓',
+  ).dataset.priority = 'low';
+  addKey(
+    t('Task checkbox', 'Чекбокс задачи'),
+    t(
+      'An empty circle is open work, a check marks completion and an X marks failure. Click to complete or reopen.',
+      'Пустой круг — открытая задача, галочка — выполненная, крестик — не выполненная. Нажатие завершает или возвращает задачу в план.',
+    ),
+    'circle',
+  );
+  addKey(
+    w.meeting,
+    t('People icon — Meeting task type.', 'Значок людей — тип задачи «Встреча».'),
+    'users-round',
+  );
+  addKey(
+    w.payment,
+    t(
+      'Dollar sign — Payment task type; the amount uses its saved currency.',
+      'Знак $ — тип задачи «Платёж»; сумма отображается в сохранённой валюте.',
+    ),
+    '',
+    '$',
+  );
+  addKey(
+    t('Status task type', 'Тип «Статус»'),
+    t(
+      'Flag — the task type, separate from its workflow status.',
+      'Флажок — тип задачи, отдельно от её статуса выполнения.',
+    ),
+    'flag',
+  );
+  addKey(
+    w.deadline,
+    t(
+      'Calendar with a clock — the final deadline card.',
+      'Календарь с часами — конечная карточка дедлайна.',
+    ),
+    'calendar-clock',
+  );
+  addKey(
+    w.repeat,
+    t('Circular arrows — a recurring task.', 'Круговые стрелки — повторяющаяся задача.'),
+    'repeat',
+  );
+  addKey(
+    w.description,
+    t(
+      'Document beside the title — a saved description; open the title to read or edit it.',
+      'Документ рядом с названием — у задачи есть описание; нажмите название, чтобы прочитать или изменить его.',
+    ),
+    'file-text',
+  );
+  addKey(
+    w.estimate,
+    t(
+      'Clock beside minutes — estimated or planned time, not a running timer.',
+      'Часы рядом с минутами — оценка или план времени, а не работающий таймер.',
+    ),
+    '',
+    '◷',
+  );
+  addKey(
+    t('Recorded time', 'Затраченное время'),
+    t(
+      'Check beside minutes — recorded spent time, separate from task completion.',
+      'Галочка рядом с минутами — записанное фактическое время, отдельно от отметки выполнения задачи.',
+    ),
+    '',
+    '✓',
+  );
+  addKey(
+    w.unestimated,
+    t(
+      'Question mark in daily workload — tasks without a time estimate; the number counts them.',
+      'Вопросительный знак в нагрузке дня — задачи без оценки времени; число показывает их количество.',
+    ),
+    '',
+    '?',
+  );
+  addKey(
+    w.taskDetails,
+    t(
+      'Vertical ellipsis — reveal context and actions in Minimal view.',
+      'Вертикальное многоточие — раскрыть подробности и действия в минималистичном виде.',
+    ),
+    'ellipsis-vertical',
+  );
+  addKey(
+    w.fail,
+    t(
+      'Crossed circle in the action row — mark failure or return the task to the plan.',
+      'Круг с крестиком в действиях — отметить невыполнение или вернуть задачу в план.',
+    ),
+    'circle-x',
+  );
+  addKey(
+    w.reschedule,
+    t('Calendar in the action row — reschedule.', 'Календарь в действиях — перенести задачу.'),
+    'calendar-days',
+  );
+  addKey(
+    w.note,
+    t(
+      'Document button in the action row — open the Markdown note.',
+      'Кнопка документа в действиях — открыть Markdown-заметку.',
+    ),
+    'file-text',
+  );
+  addKey(
+    w.remove,
+    t(
+      'Trash — delete using the plugin deletion dialog.',
+      'Корзина — удалить через диалог плагина.',
+    ),
+    'trash-2',
+  );
   section(t('Lists, calendar and boards', 'Списки, календарь и доски'), [
     w.help,
     w.boardHelp,
     w.boardPeriodHint,
     t(
-      'Day, Week and Month show the chosen work days and the separate deadline. A distant deadline does not repeat a task on every intervening day. Date sets the primary work day. Additional dates already saved in the note’s workDates field remain visible and are preserved when editing the task. Deadline-only cards appear at the bottom of their day without a separate lane. All names and area/project labels wrap in full; no tasks are hidden behind count buttons. Dragging a work day moves only that session; dragging a deadline moves only the deadline. A task still has one status and one total of spent minutes. Extra work days cannot be combined with a recurrence rule.',
-      'Режимы «День», «Неделя» и «Месяц» показывают выбранные дни работы и отдельный дедлайн. Далёкий срок не повторяет задачу в каждом промежуточном дне. Поле «Дата» задаёт основной рабочий день. Дополнительные даты, уже сохранённые в поле workDates заметки, остаются видимыми и сохраняются при редактировании задачи. Карточка отдельного дедлайна находится внизу дня, без дополнительной полосы. Названия, сфера и проект видны полностью; задач под кнопками с количеством нет. Перетаскивание рабочего дня переносит только его, а дедлайна — только срок. Статус и фактически затраченные минуты остаются общими для задачи. Дополнительные дни нельзя совмещать с правилом повторения.',
+      'Day, Week and Month show the chosen work days and the separate deadline. Subtle continuation marks link start and deadline without checkboxes, work sessions or additional workload; clicking one edits the original task. Date sets the primary work day. Additional dates already saved in the note’s workDates field remain visible and are preserved when editing the task. Deadline-only cards appear at the bottom of their day without a separate lane. Expanded names and project labels wrap in full; area/project context is included; no tasks are hidden behind count buttons. Dragging a work day moves only that session; dragging a deadline moves only the deadline. A task still has one status and one total of spent minutes. Extra work days cannot be combined with a recurrence rule.',
+      'Режимы «День», «Неделя» и «Месяц» показывают выбранные дни работы и отдельный дедлайн. Между стартом и дедлайном видны приглушённые отметки без чекбоксов и дополнительной нагрузки. Нажатие открывает исходную задачу. Поле «Дата» задаёт основной рабочий день. Дополнительные даты, уже сохранённые в поле workDates заметки, остаются видимыми и сохраняются при редактировании задачи. Карточка отдельного дедлайна находится внизу дня, без дополнительной полосы. После раскрытия название и проект видны полностью; сфера показана рядом с проектом; задач под кнопками с количеством нет. Перетаскивание рабочего дня переносит только его, а дедлайна — только срок. Статус и фактически затраченные минуты остаются общими для задачи. Дополнительные дни нельзя совмещать с правилом повторения.',
     ),
     t(
-      'Hide completed and Hide recurring independently filter calendar cards. Day, Week and Month share these choices while the view stays open. Task status, planned load, time, expenses and subscription forecasts remain unchanged.',
-      '«Скрыть выполненные» и «Скрыть повторяющиеся» независимо скрывают карточки календаря. Выбор сохраняется для дня, недели и месяца, пока открыт этот вид планировщика. Статусы, плановая нагрузка, время, расходы и прогноз подписок не меняются.',
+      'Hide completed, Hide failed and Hide recurring independently filter calendar cards. Day, Week and Month share these choices while the view stays open. Task status, planned load, time, expenses and subscription forecasts remain unchanged.',
+      '«Скрыть выполненные», «Скрыть проваленные» и «Скрыть повторяющиеся» независимо скрывают карточки календаря. Выбор сохраняется для дня, недели и месяца, пока открыт этот вид планировщика. Статусы, плановая нагрузка, время, расходы и прогноз подписок не меняются.',
     ),
   ]);
   section(t('Planned workload', 'Плановая нагрузка'), [

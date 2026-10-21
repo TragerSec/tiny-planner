@@ -40,7 +40,7 @@ description: |
 scheduled: '2026-10-02'
 due: null
 recurrence: FREQ=DAILY
-priority: normal # normal | high
+priority: normal # low | normal | high
 taskType: task # task | meeting | payment | status; subscription is a separate expense record
 actualMinutes: 0 # one-off total; historic unallocated time on imported series
 topOccurrences:
@@ -136,10 +136,12 @@ Analytics primary minutes include terminal one-offs and explicit terminal occurr
 
 ## Optional work planning and budget fields
 
-Schema remains 1; existing notes are not migrated. One-off tasks may add `workDates: ['2026-10-06', '2026-10-08']` and `plannedMinutes: 120`. The existing `scheduled` date is the primary work day, while `due` is the deadline. Unique work dates and due render as separate calendar events; the intervening interval does not create daily cards. With extra dates alone, their first date is the representative/reporting fallback. There is still one task status and one `actualMinutes` total. Planned minutes are independent estimates, distributed across unique selected work days; they never overwrite actual minutes or create spent-time records.
+Schema remains 1; existing notes are not migrated. One-off tasks may add `workDates: ['2026-10-06', '2026-10-08']` and `plannedMinutes: 120`. The existing `scheduled` date is the primary work day, while `due` is the deadline. Unique work dates and due render as separate calendar events; the intervening interval may show presentation-only continuation marks, without synthetic occurrences, note writes or additional workload. With extra dates alone, their first date is the representative/reporting fallback. There is still one task status and one `actualMinutes` total. Planned minutes are independent estimates, distributed across unique selected work days; they never overwrite actual minutes or create spent-time records.
 
 Writes require canonical valid dates, at most 1000 extra dates, no selected day after due, and a finite nonnegative minute estimate up to 10,000,000. Minutes are rounded to integers. Extra work dates cannot be saved together with a recurrence rule. Recurring occurrences keep their original keys and each receives the series estimate. Omitted optional fields preserve existing metadata for older service callers. Explicit calendar-role moves touch only the selected day or deadline. Undo covers those fields.
 
 Projects and areas may have `monthlyBudget: 250` and `budgetCurrency: USD`. Empty/absent limit means no configured budget; zero is valid. Amount validation matches expense amounts (finite 0..1e12); currency is a three-letter uppercase code. Area budgets include linked projects and do not create additional payment records. The reporting period prorates monthly limits using actual calendar month lengths. Scope limits are independent and are not summed together. Payment snapshots and actual payment dates retain their existing accounting semantics.
 
 `dailyCapacityMinutes` is a plugin setting, with a default of 480 and accepted range 0..1440; zero means no available time. Calendar view/focus selection stays within the open view's state and changes no note dates.
+
+Priority is stored as `low`, `normal` or `high`; missing/unrecognized values remain `normal`. High uses a red ! marker, low a white downward arrow. Within the existing date/time/status order, priority sorts high → normal → low. Calendar visibility controls are view-only and never rewrite statuses or recurrence history.

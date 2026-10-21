@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calendarItems, dayLoad } from '../src/core/calendar';
+import { calendarItems, calendarContinuations, dayLoad } from '../src/core/calendar';
 import { analytics } from '../src/core/analytics';
 import { boardItems } from '../src/core/board';
 import { normalizeTask } from '../src/core/normalize';
@@ -111,4 +111,64 @@ test('a work day identical to deadline stays one event and recurrence keeps move
     '2026-10-03',
     '2026-10-04',
   ]);
+});
+
+test('range continuations are bounded visual dates without duplicated work or workload', () => {
+  const task = normalizeTask('range.md', {
+    scheduled: '2026-10-01',
+    due: '2026-10-06',
+    workDates: ['2026-10-03'],
+    plannedMinutes: 60,
+  });
+  assert.deepEqual(
+    calendarContinuations(task, [
+      '2026-09-30',
+      '2026-10-01',
+      '2026-10-02',
+      '2026-10-03',
+      '2026-10-04',
+      '2026-10-05',
+      '2026-10-06',
+      '2026-10-07',
+    ]),
+    ['2026-10-02', '2026-10-04', '2026-10-05'],
+  );
+  assert.equal(dayLoad([task], '2026-10-02', 480).minutes, 0);
+  assert.equal(dayLoad([task], '2026-10-02', 480).unestimated, 0);
+  assert.deepEqual(
+    calendarContinuations({ ...task, recurrence: 'FREQ=DAILY' }, ['2026-10-02']),
+    [],
+  );
+  assert.deepEqual(calendarContinuations({ ...task, kind: 'subscription' }, ['2026-10-02']), []);
+  for (const v of [{ scheduled: '' }, { due: '' }, { due: task.scheduled }, { due: '2026-09-30' }])
+    assert.deepEqual(calendarContinuations({ ...task, ...v }, ['2026-10-02']), []);
+  assert.deepEqual(calendarContinuations({ ...task, due: '9999-12-31' }, ['2026-10-02']), [
+    '2026-10-02',
+  ]);
+});
+
+test('workload counts independent repeats moved onto the same day, including missing estimates', () => {
+  const task = normalizeTask('repeat.md', {
+    scheduled: '2026-10-01',
+    recurrence: 'FREQ=DAILY;COUNT=3',
+    plannedMinutes: 30,
+    topMoves: { '2026-10-01': '2026-10-03', '2026-10-02': '2026-10-03' },
+    topOccurrences: { '2026-10-02': { status: 'done' } },
+  });
+  assert.equal(dayLoad([task], '2026-10-03', 45).minutes, 60);
+  assert.equal(dayLoad([task], '2026-10-03', 45).over, true);
+  assert.equal(dayLoad([{ ...task, plannedMinutes: 0 }], '2026-10-03', 480).unestimated, 2);
+  assert.equal(dayLoad([task], '2026-10-01', 480).minutes, 0);
+});
+
+test('explicit reopened repeat contributes load even when legacy series status is closed', () => {
+  const task = normalizeTask('legacy.md', {
+    scheduled: '2026-10-01',
+    recurrence: 'FREQ=DAILY',
+    status: 'done',
+    plannedMinutes: 20,
+    topOccurrences: { '2026-10-02': { status: 'todo' } },
+  });
+  assert.equal(dayLoad([task], '2026-10-02', 480).minutes, 20);
+  assert.equal(dayLoad([task], '2026-10-03', 480).minutes, 0);
 });

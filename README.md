@@ -7,7 +7,7 @@ A local planner for **Obsidian** that brings work, home tasks and expenses toget
 | View                      | What you can do                                                                                           |
 | ------------------------- | --------------------------------------------------------------------------------------------------------- |
 | Today, Inbox and Upcoming | Capture tasks, review overdue work and plan the next few days.                                            |
-| Calendar                  | Use Day, Week or Month; move work dates or deadlines and independently hide completed or recurring tasks. |
+| Calendar                  | Use Day, Week or Month; move work dates or deadlines and independently hide completed, failed or recurring tasks; choose Minimal or Detailed view. |
 | Areas & projects          | Organize work, set project deadlines and review progress.                                                 |
 | Boards                    | Move tasks through Backlog, To do, In progress, Done and Failed.                                          |
 | Statistics                | Review work and spending for the current calendar week, month, quarter or year.                           |
@@ -17,7 +17,7 @@ A local planner for **Obsidian** that brings work, home tasks and expenses toget
 
 Recurring tasks support presets and custom date-based RRULEs, independent occurrence history and optional end dates. Tasks have a planned date, a separate deadline, an optional estimate and separately recorded actual minutes. Existing additional work dates in notes remain supported by the calendar and workload calculations.
 
-The interface follows the theme's accent color, with semantic status colors, full wrapping titles and responsive controls. The left menu collapses through one panel icon. Dates stay beside the relevant heading or period controls. Detailed tables are collapsed until requested.
+The interface follows the theme's accent color, with semantic status colors and responsive controls. Calendar cards use equal compact heights with up to two title lines; the vertical ellipsis reveals the full title, area/project, time and actions. Detailed view expands every task. Up to 1100 px, Week and Month become a dated agenda; only the whole planner page scrolls. Tasks support Low, Normal and High priority, and subscriptions have an explicit edit action. The bilingual Guide explains colors and icons. The left menu collapses through one panel icon. Dates stay beside the relevant heading or period controls. Detailed tables are collapsed until requested.
 
 ## Installation
 
@@ -47,6 +47,8 @@ After enabling the plugin, open Obsidian's command palette, search for `Tiny Pla
 Tasks can have no date or project. Inbox collects tasks without a resolved project. Language and date format are configurable in plugin settings; Russian is the initial default. Supported formats are `DD.MM.YYYY`, `MM/DD/YYYY` and `YYYY-MM-DD`.
 
 ## Screenshots
+
+These images illustrate the main views. Version 1.0.4 uses the compact calendar cards and grouped controls described above.
 
 ### Upcoming
 
@@ -87,7 +89,7 @@ See task and project totals, recorded time, the status distribution and progress
 ## Planning and reporting
 
 - Calendar orders Done, then Failed, then unfinished tasks, considering appointment times within each group. Subscriptions and separate deadline cards appear at the bottom of their day.
-- A multi-day task appears on selected work dates and its deadline, without filling intervening days. Moving a work card changes that day; moving a deadline card changes the deadline.
+- A multi-day task appears on selected work dates and its deadline, with subtle continuation marks on intervening days. These marks inherit status, reserve the checkbox gutter without a checkbox, and add no workload. Moving a work card changes that day; moving a deadline card changes the deadline.
 - Dated boards place closed work on its resolution day, falling back to the planned day when no resolution date was recorded. A later deadline does not keep closed tasks on Today; All retains their history.
 - Planned minutes and actual minutes are separate. Completed work cards show Plan and positive recorded Spent values. Missing estimates remain explicitly unknown in workload totals.
 - Daily capacity defaults to 480 minutes. Weekly/monthly views retain daily availability rather than inventing a single period limit.
@@ -114,6 +116,7 @@ Use **Node.js 22+** and the committed lockfile:
 
 ```sh
 npm ci --ignore-scripts
+npm run verify:build
 npm run check
 npm run verify:build
 npx --no-install playwright install chromium
@@ -138,3 +141,5 @@ Run relevant checks for contributions. Preserve local operation, unknown note fi
 ## License
 
 [MIT](LICENSE). Bundled recurrence code retains its licenses in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [vendor/rrule](vendor/rrule/README.md).
+
+Assigned task time (HH:mm) stays visible before the title in both Minimal and Detailed calendar views, including work, deadline and continuation cards. Untimed tasks show no placeholder. This is the optional local appointment time, not the estimated duration.

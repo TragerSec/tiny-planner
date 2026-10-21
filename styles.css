@@ -49,7 +49,7 @@
 
 .tp-nav {
   min-height: 0;
-  overflow-y: auto;
+  overflow: visible;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -102,7 +102,7 @@
 }
 .tp-content {
   min-height: 0;
-  overflow-y: auto;
+  overflow: visible;
   padding: 28px clamp(16px, 3vw, 44px);
   min-width: 0;
 }
@@ -555,7 +555,7 @@
 }
 .tp-import-warnings {
   max-height: 250px;
-  overflow-y: auto;
+  overflow: visible;
   overflow-wrap: anywhere;
 }
 .tp-shell button:focus-visible,
@@ -599,7 +599,7 @@
     min-width: 850px;
   }
   .tp-main.tp-has-calendar {
-    overflow-x: auto;
+    overflow: visible;
   }
 }
 @media (max-width: 600px) {
@@ -717,7 +717,7 @@
   min-width: 850px;
 }
 .tp-host.tp-narrow .tp-main.tp-has-calendar {
-  overflow-x: auto;
+  overflow: visible;
 }
 
 .tp-host.tp-mobile .tp-shell {
@@ -966,12 +966,12 @@
   padding: 8px 0;
 }
 .tp-stats-table-wrap {
-  overflow-x: auto;
+  overflow: visible;
   max-width: 100%;
 }
 .tp-activity-details .tp-stats-table-wrap {
   max-height: 260px;
-  overflow-y: auto;
+  overflow: visible;
 }
 .tp-stats-table {
   border-collapse: collapse;
@@ -1432,24 +1432,49 @@
 
 /* Shared occurrence palette, scoped to Kanban and calendar work items.
    Labels and native controls retain status meaning without color. */
-:is(.tp-board-column, .tp-board-card, .tp-day .tp-task, .tp-workflow-stat)[data-status='backlog'] {
+:is(
+  .tp-board-column,
+  .tp-board-card,
+  .tp-day .tp-task,
+  .tp-calendar-continuation,
+  .tp-workflow-stat
+)[data-status='backlog'] {
   --tp-status-color: var(--tp-status-backlog);
 }
-:is(.tp-board-column, .tp-board-card, .tp-day .tp-task, .tp-workflow-stat)[data-status='todo'] {
+:is(
+  .tp-board-column,
+  .tp-board-card,
+  .tp-day .tp-task,
+  .tp-calendar-continuation,
+  .tp-workflow-stat
+)[data-status='todo'] {
   --tp-status-color: var(--tp-status-todo);
 }
 :is(
   .tp-board-column,
   .tp-board-card,
   .tp-day .tp-task,
+  .tp-calendar-continuation,
   .tp-workflow-stat
 )[data-status='in-progress'] {
   --tp-status-color: var(--tp-status-in-progress);
 }
-:is(.tp-board-column, .tp-board-card, .tp-day .tp-task, .tp-workflow-stat)[data-status='done'] {
+:is(
+  .tp-board-column,
+  .tp-board-card,
+  .tp-day .tp-task,
+  .tp-calendar-continuation,
+  .tp-workflow-stat
+)[data-status='done'] {
   --tp-status-color: var(--tp-status-done);
 }
-:is(.tp-board-column, .tp-board-card, .tp-day .tp-task, .tp-workflow-stat)[data-status='failed'] {
+:is(
+  .tp-board-column,
+  .tp-board-card,
+  .tp-day .tp-task,
+  .tp-calendar-continuation,
+  .tp-workflow-stat
+)[data-status='failed'] {
   --tp-status-color: var(--tp-status-failed);
 }
 .tp-board-column {
@@ -1630,7 +1655,7 @@
   width: 286px;
   max-width: calc(100vw - 16px);
   max-height: calc(100vh - 16px);
-  overflow-y: auto;
+  overflow: visible;
   z-index: 100;
   color: var(--text-normal);
   background: var(--background-primary);
@@ -3197,7 +3222,7 @@
   max-width: 100%;
   border: 1px solid var(--background-modifier-border);
   border-radius: 0;
-  overflow-x: auto;
+  overflow: visible;
   overflow-y: hidden;
 }
 .tp-calendar-toolbar {
@@ -3288,29 +3313,6 @@
   border-radius: 0;
   background: var(--tp-card-surface);
 }
-.tp-task-context {
-  grid-column: 1 / -1;
-  grid-row: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: 3px;
-  margin-bottom: 4px;
-  color: var(--text-muted);
-  font-size: 11px;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-.tp-task-context .tp-appointment-time {
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-}
-.tp-task-context .tp-project-label::before {
-  content: '[';
-}
-.tp-task-context .tp-project-label::after {
-  content: ']';
-}
 .tp-host .tp-day .tp-task-compact > .tp-check {
   grid-column: 1;
   grid-row: 2;
@@ -3368,9 +3370,6 @@
   grid-template-columns: 20px minmax(0, 1fr) auto;
   padding: 8px;
   column-gap: 8px;
-}
-.tp-host .tp-calendar-day-view .tp-task-context {
-  grid-column: 2;
 }
 .tp-host .tp-calendar-day-view .tp-day .tp-task-actions {
   grid-column: 3;
@@ -3484,7 +3483,6 @@
 .tp-host
   :is(
     .tp-muted,
-    .tp-task-context,
     .tp-task-meta,
     .tp-day-load,
     .tp-nav-heading,
@@ -4163,12 +4161,6 @@
   grid-template-columns: calc(13px * var(--tp-ui-scale, 1)) minmax(0, 1fr);
   column-gap: calc(3px * var(--tp-ui-scale, 1));
 }
-.tp-host .tp-day .tp-task-context {
-  gap: 1px;
-  margin-bottom: 2px;
-  font-size: calc(9px * var(--tp-ui-scale, 1));
-  line-height: 1.25;
-}
 .tp-host .tp-day .tp-task-compact > .tp-check {
   width: calc(13px * var(--tp-ui-scale, 1));
   height: calc(18px * var(--tp-ui-scale, 1));
@@ -4219,8 +4211,7 @@
   grid-template-columns: calc(16px * var(--tp-ui-scale, 1)) minmax(0, 1fr) auto;
   column-gap: calc(6px * var(--tp-ui-scale, 1));
 }
-.tp-host .tp-calendar-day-view .tp-day .tp-task-title,
-.tp-host .tp-calendar-day-view .tp-task-context {
+.tp-host .tp-calendar-day-view .tp-day .tp-task-title {
   font-size: calc(10px * var(--tp-ui-scale, 1));
 }
 
@@ -4657,27 +4648,6 @@
 .tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-day-duration {
   white-space: normal;
 }
-.tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-task-compact {
-  grid-template-columns: minmax(0, 1fr);
-  padding: 4px 1px;
-}
-.tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-task-context {
-  grid-column: 1;
-  grid-row: 1;
-}
-.tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-task-compact > .tp-check {
-  grid-column: 1;
-  grid-row: 2;
-}
-.tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-task-body {
-  grid-column: 1;
-  grid-row: 3;
-}
-.tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-task-actions {
-  grid-column: 1;
-  grid-row: 4;
-  flex-wrap: wrap;
-}
 .tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-calendar-payment {
   padding-inline: 2px;
 }
@@ -4690,19 +4660,1202 @@
 .tp-host .tp-day-number {
   box-shadow: none;
 }
-.tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-task-heading {
-  gap: 0;
+/* Priority is independent of workflow status. Both markers are outlined
+   and transparent; Low uses white and High uses red. */
+.tp-host .tp-high-priority .tp-priority {
+  color: #ff4b55;
+  border-color: #ff4b55;
+}
+@keyframes tp-priority-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 0 3px rgb(255 75 85 / 18%);
+  }
+}
+.tp-host .tp-low-priority .tp-priority {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 17px;
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  border: 1px solid #fff;
+  border-radius: 3px;
+  background: transparent;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* Calendar cards use two short lines; full titles and metadata wrap instead
+   of disappearing into ellipses. Secondary actions take space only on demand. */
+.tp-host .tp-day .tp-task-compact,
+.tp-host.tp-mobile .tp-calendar-day-view .tp-day .tp-task-compact {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 24px;
+  grid-template-rows: auto;
+  align-items: start;
+  gap: 0 3px;
+  padding: 3px 4px;
+  border-radius: 4px;
+}
+.tp-host .tp-day .tp-task-compact > .tp-check {
+  grid-column: 1;
+  grid-row: 1;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  align-self: start;
+  margin: 0;
+}
+.tp-host .tp-day .tp-task-compact > .tp-task-body {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+}
+.tp-host .tp-day .tp-task-heading {
+  gap: 3px;
+  flex-wrap: nowrap;
+  align-items: baseline;
+}
+.tp-host .tp-day .tp-task-heading > .tp-task-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  margin: 0;
+  padding: 3px 0;
+  line-height: 1.35;
+  font-size: calc(12px * var(--tp-ui-scale, 1));
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.tp-host .tp-day .tp-task-heading > .tp-description-icon {
+  order: 0;
+  flex: 0 0 12px;
+}
+.tp-host .tp-day .tp-task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px 6px;
+  margin: 0;
+  line-height: 1.3;
+  font-size: calc(10px * var(--tp-ui-scale, 1));
+}
+.tp-host .tp-day .tp-task-meta:empty {
+  display: none;
+}
+.tp-host .tp-day .tp-task-meta .tp-project-label {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.tp-card-menu {
+  grid-column: 3;
+  grid-row: 1;
+  position: relative;
+  min-width: 0;
+}
+.tp-card-menu-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  list-style: none;
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  color: var(--text-muted);
+}
+.tp-card-menu-toggle::-webkit-details-marker {
+  display: none;
+}
+.tp-card-menu-toggle svg {
+  width: 16px;
+  height: 16px;
+}
+.tp-card-menu-toggle:is(:hover, :focus-visible) {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+.tp-card-menu-toggle:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 1px;
+}
+.tp-host .tp-day .tp-card-menu > .tp-task-actions {
+  position: absolute;
+  inset-inline-end: 0;
+  top: 100%;
+  z-index: 20;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 5px;
+  width: max-content;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  box-shadow: 0 3px 12px rgb(0 0 0 / 15%);
+  opacity: 1;
+  pointer-events: auto;
+}
+.tp-host .tp-day .tp-card-menu:not([open]) > .tp-task-actions {
+  display: none;
+}
+.tp-host .tp-day .tp-card-menu > .tp-task-actions button {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+}
+.tp-host .tp-day {
+  gap: 4px;
+  padding: 6px;
+}
+.tp-agenda-date {
+  display: none;
+}
+
+/* An agenda is more usable than seven squeezed columns in a small pane.
+   The same dates, tasks, deadlines and subscriptions remain in the DOM. */
+.tp-host.tp-agenda .tp-calendar-surface .tp-calendar-grid:not(.tp-calendar-day-view) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.tp-host.tp-agenda .tp-calendar-grid:not(.tp-calendar-day-view) > .tp-weekday {
+  display: none;
+}
+.tp-host.tp-agenda .tp-calendar-grid:not(.tp-calendar-day-view) > .tp-day {
+  min-height: 68px;
+  padding: 8px;
+  border-inline: 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.tp-host.tp-agenda .tp-calendar-grid:not(.tp-calendar-day-view) .tp-day-heading {
+  flex-wrap: nowrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 3px;
+}
+.tp-host.tp-agenda .tp-calendar-grid:not(.tp-calendar-day-view) .tp-agenda-date {
+  display: inline;
+  color: var(--text-normal);
+  font-size: 13px;
+}
+.tp-host.tp-agenda .tp-calendar-grid:not(.tp-calendar-day-view) .tp-day-load {
+  margin-inline-start: auto;
+}
+.tp-host.tp-agenda .tp-day .tp-task-heading > .tp-task-title {
+  font-size: calc(14px * var(--tp-ui-scale, 1));
+}
+.tp-host.tp-agenda .tp-day .tp-task-meta {
+  font-size: calc(11px * var(--tp-ui-scale, 1));
+}
+.tp-host.tp-agenda .tp-day .tp-task-compact {
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
+  padding-block: 2px;
+}
+.tp-host.tp-agenda .tp-day .tp-task-compact > .tp-check,
+.tp-host.tp-agenda .tp-card-menu-toggle {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+}
+.tp-host.tp-agenda .tp-day .tp-task-heading > .tp-task-title {
+  min-height: 36px;
+}
+.tp-host.tp-agenda .tp-day .tp-card-menu > .tp-task-actions button {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+}
+
+/* Phone navigation stays on a single swipeable row, leaving the screen for
+   the planner. Forms, actions and scroll containers respect touch and zoom. */
+.tp-host.tp-mobile .tp-shell {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.tp-host.tp-mobile .tp-sidebar {
+  padding: 8px 10px;
+  gap: 4px;
+  max-height: none;
+}
+.tp-host.tp-mobile .tp-sidebar-heading {
+  min-height: 36px;
+}
+.tp-host.tp-mobile .tp-brand {
+  font-size: 16px;
+}
+.tp-host.tp-mobile .tp-nav {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  overflow: visible;
+  overflow-y: hidden;
+  gap: 3px;
+  padding-bottom: 3px;
+  touch-action: auto;
+}
+.tp-host.tp-mobile .tp-nav-group {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 3px;
+}
+.tp-host.tp-mobile .tp-nav-button {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 44px;
+  white-space: nowrap;
+  padding: 8px 10px;
+}
+.tp-host.tp-mobile .tp-sidebar-bottom {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  padding: 0;
+  gap: 4px 8px;
+}
+.tp-host.tp-mobile .tp-sidebar-bottom button {
+  min-height: 36px;
+}
+.tp-host.tp-mobile .tp-content {
+  padding: 12px 10px max(16px, env(safe-area-inset-bottom));
+}
+.tp-host.tp-mobile .tp-header {
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.tp-host.tp-mobile .tp-header h1 {
+  font-size: 21px;
+}
+.tp-host.tp-mobile .tp-calendar-controls {
+  flex-direction: column;
+  align-items: stretch;
+}
+.tp-host.tp-mobile .tp-calendar-visibility {
   flex-wrap: wrap;
 }
-.tp-host.tp-narrow
-  .tp-calendar-grid:not(.tp-calendar-day-view)
-  .tp-task-heading
-  > .tp-description-icon {
-  order: -1;
-  flex-basis: 100%;
+.tp-host.tp-mobile .tp-calendar-visibility button {
+  flex: 1 1 auto;
 }
-/* A zero-basis title must not share the description icon's full-width line:
-   retain at least one character before flex wrapping the following markers. */
-.tp-host.tp-narrow .tp-calendar-grid:not(.tp-calendar-day-view) .tp-task-heading > .tp-task-title {
-  min-width: min(1ch, 100%);
+.tp-host.tp-mobile :is(.tp-calendar-views, .tp-calendar-visibility) button {
+  min-height: 40px;
+}
+.tp-host.tp-mobile .tp-calendar-views button {
+  flex: 1;
+}
+.tp-host.tp-mobile .tp-calendar-navigation {
+  flex-wrap: nowrap;
+}
+.tp-host.tp-mobile .tp-calendar-navigation h2 {
+  font-size: 14px;
+}
+.tp-host.tp-mobile .tp-calendar-toolbar {
+  gap: 6px;
+  padding: 8px;
+}
+.tp-host.tp-mobile .tp-calendar-toolbar button.tp-icon-button {
+  width: 40px;
+  height: 40px;
+}
+.tp-host.tp-mobile .tp-day-number {
+  min-height: 40px;
+  min-width: 32px;
+}
+.tp-host.tp-mobile .tp-task:not(.tp-task-compact) {
+  grid-template-columns: 40px minmax(0, 1fr);
+  padding: 8px 6px;
+}
+.tp-host.tp-mobile .tp-task:not(.tp-task-compact) > .tp-check {
+  width: 40px;
+  height: 40px;
+}
+.tp-host.tp-mobile .tp-task:not(.tp-task-compact) .tp-task-actions {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+.tp-host.tp-mobile .tp-task:not(.tp-task-compact) .tp-task-actions button {
+  width: 40px;
+  height: 40px;
+}
+.tp-host.tp-mobile :is(input, select, textarea) {
+  font-size: max(16px, calc(14px * var(--tp-ui-scale, 1)));
+}
+.tp-host.tp-mobile .tp-subscription-actions {
+  justify-content: flex-start;
+}
+.tp-host.tp-mobile .tp-subscription-actions button {
+  min-height: 44px;
+}
+@media (max-width: 600px) {
+  .tp-modal .tp-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+  .tp-modal :is(input, select, textarea) {
+    font-size: 16px;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .tp-modal :is(input, select, button) {
+    min-height: 44px;
+  }
+  .tp-modal .tp-modal-actions {
+    position: sticky;
+    bottom: 0;
+    background: var(--background-primary);
+    padding-block: 10px;
+  }
+  .tp-modal .tp-modal-actions button {
+    flex: 1;
+  }
+}
+
+.tp-host.tp-agenda .tp-calendar-grid .tp-day .tp-task-compact {
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
+}
+.tp-host.tp-agenda .tp-calendar-grid .tp-day .tp-task-compact > .tp-check {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+}
+.tp-host.tp-agenda .tp-calendar-grid:not(.tp-calendar-day-view) .tp-date-number {
+  display: none;
+}
+.tp-host.tp-agenda .tp-calendar-grid:not(.tp-calendar-day-view) .tp-day-number {
+  min-width: 0;
+  width: auto;
+  padding: 4px 2px;
+  text-align: start;
+}
+.tp-host.tp-mobile .tp-sidebar-bottom {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+.tp-host.tp-mobile .tp-sidebar-bottom > button {
+  width: auto;
+  min-width: 0;
+  padding: 4px 0;
+  min-height: 40px;
+  font-size: 10px;
+  line-height: 1.35;
+}
+.tp-host .tp-day .tp-task-meta .tp-planned-minutes,
+.tp-host .tp-day .tp-task-meta .tp-actual-minutes {
+  white-space: nowrap;
+}
+.tp-host .tp-day .tp-task-meta .tp-planned-minutes::before {
+  content: '◷ ';
+}
+.tp-host .tp-day .tp-task-meta .tp-actual-minutes::before {
+  content: '✓ ';
+}
+/* On a desktop grid, controls share the leading edge rather than consuming
+   a full extra line for each card. */
+.tp-host:not(.tp-agenda) .tp-day .tp-task-compact {
+  grid-template-columns: 20px minmax(0, 1fr) 20px;
+  column-gap: 2px;
+}
+.tp-host:not(.tp-agenda) .tp-day .tp-card-menu-toggle {
+  width: 20px;
+}
+.tp-host .tp-day:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: -2px;
+}
+/* Open actions expand only the selected card. Inline placement avoids
+   clipped popups at the edge of a scrolling calendar cell. */
+.tp-host .tp-day .tp-card-menu[open] {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  justify-content: flex-start;
+}
+.tp-host .tp-day .tp-card-menu[open] > .tp-task-actions {
+  position: static;
+  width: auto;
+  flex-wrap: wrap;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 2px;
+}
+@media print {
+  .tp-host:not(.tp-agenda) .tp-calendar-grid:not(.tp-calendar-day-view) > .tp-day {
+    max-height: none;
+    overflow: visible;
+  }
+  .tp-host .tp-card-menu {
+    display: none;
+  }
+}
+.tp-host .tp-day .tp-task-heading {
+  align-items: flex-start;
+}
+.tp-host .tp-day .tp-task-heading > :is(.tp-kind-badge, .tp-priority, .tp-description-icon) {
+  margin-top: 2px;
+}
+.tp-host .tp-day .tp-card-menu[open] > .tp-task-actions {
+  flex: 1 1 0;
+  min-width: 0;
+  height: auto;
+}
+
+/* One page scroller. Calendar cells, charts, catalogs and navigation never
+   own wheel/touch scrolling or conceal it with a hidden scrollbar. */
+.tp-host {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.tp-host .tp-shell {
+  height: auto;
+  min-height: 100%;
+  align-items: start;
+}
+.tp-host .tp-content {
+  overflow: visible;
+  max-height: none;
+}
+.tp-host
+  :is(
+    .tp-day,
+    .tp-nav,
+    .tp-sidebar,
+    .tp-stats-table-wrap,
+    .tp-import-warnings,
+    .tp-calendar-surface,
+    .tp-calendar-grid
+  ) {
+  overflow: visible;
+  max-height: none;
+  overscroll-behavior: auto;
+}
+.tp-host .tp-sidebar {
+  position: sticky;
+  top: 0;
+}
+.tp-host .tp-nav {
+  flex-shrink: 0;
+}
+.tp-host.tp-mobile .tp-shell {
+  display: block;
+}
+.tp-host.tp-mobile .tp-sidebar {
+  position: static;
+}
+.tp-host.tp-mobile .tp-nav {
+  flex-wrap: wrap;
+}
+.tp-host.tp-mobile .tp-nav-group {
+  flex-wrap: wrap;
+  flex: 1 1 auto;
+}
+.tp-host.tp-mobile .tp-nav-button {
+  flex: 1 1 auto;
+}
+.tp-host .tp-activity-details .tp-stats-table-wrap {
+  max-height: none;
+  overflow: visible;
+}
+.tp-host .tp-stats-table {
+  table-layout: fixed;
+  width: 100%;
+}
+.tp-host .tp-stats-table :is(th, td) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.tp-picker-popup {
+  overflow: visible;
+  max-height: none;
+}
+.tp-host .tp-calendar-grid .tp-day-heading {
+  position: static;
+}
+.tp-host .tp-day .tp-task-heading > .tp-task-title {
+  padding-block: 0;
+  line-height: 1.3;
+}
+.tp-host .tp-day .tp-task-meta .tp-project-label {
+  flex: 0 1 auto;
+}
+.tp-host .tp-day {
+  gap: 3px;
+  padding: 4px;
+}
+.tp-host .tp-low-priority .tp-priority {
+  background: transparent;
+}
+.theme-light .tp-host .tp-low-priority .tp-priority {
+  filter: drop-shadow(0 0 1px #444);
+}
+
+/* Every select uses the same theme-owned trigger and floating choice panel.
+   Pagination/search keep long catalogs usable without nested scrollbars. */
+.tp-select-control {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+}
+.tp-select-control > select.tp-native-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 30px;
+  min-width: 0;
+  opacity: 0;
+  pointer-events: none;
+  margin: 0;
+}
+:is(.tp-host, .tp-modal, .tp-settings, .tp-picker-popup) .tp-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  height: auto;
+  padding: 6px 9px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  box-shadow: none;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font: inherit;
+  font-size: 12px;
+  text-align: start;
+}
+.tp-select-value {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.tp-select-arrow {
+  display: flex;
+  flex: 0 0 14px;
+  color: var(--text-muted);
+}
+.tp-select-arrow svg {
+  width: 14px;
+  height: 14px;
+}
+.tp-select-trigger[aria-expanded='true'] {
+  border-color: var(--interactive-accent);
+}
+.tp-select-trigger[aria-expanded='true'] .tp-select-arrow {
+  transform: rotate(180deg);
+}
+.tp-select-panel {
+  position: fixed;
+  inset: auto;
+  z-index: 10000;
+  box-sizing: border-box;
+  max-width: calc(100vw - 16px);
+  max-height: none;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 7px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  box-shadow: 0 3px 10px rgb(0 0 0 / 8%);
+  overflow: visible;
+}
+.tp-select-panel[hidden],
+.tp-select-pager[hidden] {
+  display: none;
+}
+.tp-select-options {
+  outline: none;
+  overflow: visible;
+  min-width: 0;
+}
+.tp-select-option {
+  padding: 7px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.tp-select-option[aria-selected='true'] {
+  font-weight: 650;
+  color: var(--interactive-accent);
+}
+.tp-select-option:is(:hover, .tp-option-active) {
+  background: var(--background-modifier-hover);
+}
+.tp-select-option[aria-selected='true']::after {
+  content: ' ✓';
+}
+.tp-select-empty {
+  padding: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+:is(.tp-host, .tp-modal, .tp-settings) .tp-select-search {
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 4px;
+}
+.tp-select-pager {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+  padding-top: 4px;
+}
+.tp-select-pager > span {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.tp-select-pager > button {
+  min-width: 30px;
+  min-height: 28px;
+}
+.tp-field > .tp-select-control {
+  width: 100%;
+}
+.tp-host .tp-quick-options > .tp-select-control {
+  flex: 1 1 150px;
+}
+.tp-host .tp-filter-panel > .tp-select-control {
+  flex: 1 1 180px;
+}
+.tp-host .tp-board-controls > .tp-select-control {
+  min-width: 140px;
+}
+.tp-host .tp-board-card > .tp-select-control {
+  margin-top: 6px;
+}
+.tp-picker-header > .tp-select-control {
+  flex: 1 1 60px;
+}
+.tp-clock-grid .tp-select-trigger {
+  font-size: 18px;
+}
+.tp-host.tp-mobile .tp-select-trigger {
+  min-height: 44px;
+  font-size: 16px;
+}
+.tp-host.tp-mobile .tp-select-option {
+  min-height: 40px;
+  font-size: 14px;
+}
+.tp-description {
+  resize: none;
+  overflow: hidden;
+}
+@media (max-width: 600px) {
+  .tp-modal .tp-select-trigger {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .tp-modal .tp-select-option {
+    min-height: 40px;
+    font-size: 14px;
+  }
+  .tp-host .tp-filter-panel > .tp-select-control {
+    flex-basis: auto;
+    width: 100%;
+  }
+}
+.tp-host .tp-sidebar {
+  position: static;
+}
+.tp-host .tp-task-compact .tp-task-heading > .tp-priority {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  padding: 0;
+  border-radius: 3px;
+  font-size: 10px;
+  background: transparent;
+}
+
+/* Minimal calendar cards: one title row; context expands inline via ellipsis. */
+.tp-host .tp-calendar-grid .tp-day .tp-task-compact {
+  grid-template-columns: 22px minmax(0, 1fr) 22px;
+  min-height: 26px;
+  padding: 2px 3px;
+  gap: 0 3px;
+}
+.tp-host .tp-calendar-grid .tp-day .tp-task-compact > .tp-check,
+.tp-host .tp-calendar-grid .tp-day .tp-card-menu-toggle {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+}
+.tp-host .tp-calendar-grid .tp-day .tp-card-menu {
+  position: static;
+  grid-column: 3;
+  grid-row: 1;
+  height: auto;
+  align-self: start;
+}
+.tp-host .tp-calendar-grid .tp-day .tp-card-menu[open] {
+  display: block;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  padding-top: 4px;
+}
+.tp-host .tp-calendar-grid .tp-day .tp-card-menu-toggle {
+  position: absolute;
+  inset-inline-end: 3px;
+  top: 2px;
+}
+.tp-host .tp-calendar-grid .tp-day .tp-card-menu > .tp-task-meta {
+  padding: 3px 2px;
+  font-size: calc(11px * var(--tp-ui-scale, 1));
+}
+.tp-host .tp-calendar-grid .tp-day .tp-card-menu:not([open]) > .tp-task-meta {
+  display: none;
+}
+.tp-host .tp-calendar-grid .tp-day .tp-task-heading {
+  min-height: 22px;
+  align-items: flex-start;
+}
+.tp-host
+  .tp-task-heading
+  > :is(.tp-kind-badge, .tp-priority, .tp-description-icon, .tp-calendar-role-icon),
+.tp-host
+  .tp-calendar-grid
+  .tp-day
+  .tp-task-heading
+  > :is(.tp-kind-badge, .tp-priority, .tp-description-icon, .tp-calendar-role-icon),
+.tp-host .tp-calendar-continuation > :is(.tp-kind-badge, .tp-priority) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  flex: 0 0 14px;
+  padding: 0;
+  margin-top: 1px;
+  line-height: 1;
+  font-size: 10px;
+}
+.tp-host .tp-task-heading > :is(.tp-kind-badge, .tp-description-icon, .tp-calendar-role-icon) svg,
+.tp-host
+  .tp-calendar-grid
+  .tp-day
+  .tp-task-heading
+  > :is(.tp-kind-badge, .tp-description-icon, .tp-calendar-role-icon)
+  svg,
+.tp-host .tp-calendar-continuation svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+.tp-host .tp-calendar-continuation {
+  display: flex;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+  height: auto;
+  min-height: 22px;
+  padding: 3px 6px;
+  margin: 0;
+  border: 0;
+  border-inline-start: 2px solid var(--background-modifier-border);
+  border-radius: 3px;
+  box-shadow: none;
+  background: color-mix(in srgb, var(--text-muted) 5%, transparent);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: calc(11px * var(--tp-ui-scale, 1));
+  text-align: start;
+  line-height: 1.3;
+}
+.tp-host .tp-continuation-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.tp-host .tp-calendar-continuation:is(:hover, :focus-visible) {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+.tp-host.tp-agenda .tp-calendar-grid .tp-day .tp-task-compact {
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
+  min-height: 44px;
+}
+.tp-host.tp-agenda .tp-calendar-grid .tp-day .tp-task-compact > .tp-check,
+.tp-host.tp-agenda .tp-calendar-grid .tp-day .tp-card-menu-toggle {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+}
+.tp-host.tp-agenda .tp-calendar-grid .tp-day .tp-task-heading {
+  padding-block: 11px;
+}
+.tp-host.tp-agenda .tp-calendar-continuation {
+  min-height: 40px;
+  align-items: center;
+}
+/* Explicit text colors also protect choices from host/theme option resets. */
+:is(.tp-host, .tp-modal, .tp-settings, .tp-picker-popup) .tp-select-option {
+  color: var(--text-normal);
+}
+:is(.tp-host, .tp-modal, .tp-settings, .tp-picker-popup) .tp-select-option[aria-selected='true'] {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+/* Equal closed-card heights; full titles remain available in the disclosure. */
+.tp-host .tp-calendar-grid {
+  --tp-calendar-check-width: 22px;
+  --tp-calendar-card-font: calc(12px * var(--tp-ui-scale, 1));
+  --tp-calendar-card-height: max(28px, calc(var(--tp-calendar-card-font) * 2.6 + 6px));
+}
+.tp-host.tp-agenda .tp-calendar-grid {
+  --tp-calendar-check-width: 40px;
+  --tp-calendar-card-font: calc(14px * var(--tp-ui-scale, 1));
+  --tp-calendar-card-height: max(46px, calc(var(--tp-calendar-card-font) * 2.6 + 6px));
+}
+.tp-host .tp-calendar-grid .tp-day :is(.tp-task-compact, .tp-calendar-continuation) {
+  box-sizing: border-box;
+  height: var(--tp-calendar-card-height);
+  min-height: var(--tp-calendar-card-height);
+}
+.tp-host .tp-calendar-grid .tp-day .tp-task-compact .tp-task-heading {
+  height: calc(var(--tp-calendar-card-height) - 6px);
+  min-height: 0;
+  padding-block: 0;
+}
+.tp-host .tp-calendar-grid .tp-day :is(.tp-task-heading > .tp-task-title, .tp-continuation-title) {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-size: var(--tp-calendar-card-font);
+  line-height: 1.3;
+  min-height: 0;
+  height: auto;
+  padding-block: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.tp-host .tp-calendar-grid .tp-day .tp-task-compact:has(.tp-card-menu[open]),
+.tp-host .tp-calendar-grid .tp-day .tp-task-compact:has(.tp-card-menu[open]) .tp-task-heading {
+  height: auto;
+}
+.tp-host .tp-calendar-grid [data-scheduled-time]::before {
+  content: attr(data-scheduled-time) '\00a0';
+  white-space: nowrap;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.tp-host .tp-calendar-grid .tp-day .tp-task-compact:has(.tp-card-menu[open]) .tp-task-title {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  overflow: visible;
+}
+.tp-host .tp-calendar-grid .tp-day .tp-calendar-continuation {
+  align-items: flex-start;
+  padding: 2px 3px;
+  padding-inline-start: calc(6px + var(--tp-calendar-check-width));
+  color: var(--tp-status-color);
+  border-inline-start-color: color-mix(in srgb, var(--tp-status-color) 65%, transparent);
+  background: color-mix(in srgb, var(--tp-status-color) 5%, transparent);
+}
+.tp-host .tp-calendar-continuation:is(.tp-done, .tp-failed) .tp-continuation-title {
+  text-decoration: line-through;
+}
+.tp-host .tp-calendar-grid .tp-day .tp-calendar-continuation:is(:hover, :focus-visible) {
+  color: var(--tp-status-color);
+  background: color-mix(in srgb, var(--tp-status-color) 12%, transparent);
+}
+
+/* Distinct controls for period, card appearance and visibility filters. */
+.tp-host .tp-calendar-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 4fr) minmax(0, 6fr);
+  gap: 14px;
+  align-items: center;
+}
+.tp-host
+  .tp-calendar-controls
+  > :is(.tp-calendar-views, .tp-calendar-appearance, .tp-calendar-visibility) {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  align-items: stretch;
+}
+.tp-host .tp-calendar-controls > .tp-calendar-appearance {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.tp-host .tp-calendar-controls > :is(.tp-calendar-appearance, .tp-calendar-visibility) {
+  border-inline-start: 1px solid var(--background-modifier-border);
+  padding-inline-start: 14px;
+}
+.tp-host
+  .tp-calendar-controls
+  > :is(.tp-calendar-views, .tp-calendar-appearance, .tp-calendar-visibility)
+  > button {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  height: auto;
+  margin: 0;
+  padding: 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: calc(11px * var(--tp-ui-scale, 1));
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+.tp-host
+  .tp-calendar-controls
+  > :is(.tp-calendar-views, .tp-calendar-appearance, .tp-calendar-visibility)
+  > button::before,
+.tp-host
+  .tp-calendar-controls
+  > :is(.tp-calendar-views, .tp-calendar-appearance, .tp-calendar-visibility)
+  > button::after {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.tp-host
+  .tp-calendar-controls
+  > :is(.tp-calendar-views, .tp-calendar-appearance, .tp-calendar-visibility)
+  > button:is(:hover, [aria-pressed='true']) {
+  color: var(--text-normal);
+}
+.tp-host .tp-calendar-controls > .tp-calendar-views {
+  gap: 2px;
+  padding: 3px;
+  border-radius: 11px;
+  background: var(--background-secondary);
+}
+.tp-host .tp-calendar-controls > .tp-calendar-views > button[aria-pressed='true'] {
+  background: var(--background-primary);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 12%);
+}
+.tp-host .tp-calendar-controls > .tp-calendar-views > button:not([aria-pressed='true']):hover {
+  background: var(--background-modifier-hover);
+}
+.tp-host .tp-calendar-controls > .tp-calendar-appearance > button {
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  padding-inline: 4px;
+}
+.tp-host .tp-calendar-controls > .tp-calendar-appearance > button[aria-pressed='true'] {
+  border-bottom-color: var(--interactive-accent);
+  box-shadow: none;
+  background: transparent;
+}
+.tp-host .tp-calendar-controls > .tp-calendar-visibility > button {
+  padding-inline: 28px 12px;
+  border-radius: 4px;
+  background:
+    radial-gradient(circle at 16px 50%, var(--text-faint) 2px, transparent 2.5px),
+    color-mix(in srgb, var(--text-muted) 5%, transparent);
+}
+.tp-host .tp-calendar-controls > .tp-calendar-visibility > button[aria-pressed='true'] {
+  color: var(--text-normal);
+  background:
+    radial-gradient(circle at 16px 50%, var(--interactive-accent) 2px, transparent 2.5px),
+    color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+  box-shadow: none;
+}
+.tp-host .tp-calendar-controls > .tp-calendar-visibility > button:hover {
+  background-color: var(--background-modifier-hover);
+}
+.tp-host
+  .tp-calendar-controls
+  > :is(.tp-calendar-views, .tp-calendar-appearance, .tp-calendar-visibility)
+  > button:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+.tp-host.tp-agenda .tp-calendar-controls {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.tp-host.tp-agenda .tp-calendar-controls > .tp-calendar-visibility {
+  grid-column: 1 / -1;
+  border-inline-start: 0;
+  border-top: 1px solid var(--background-modifier-border);
+  padding-inline-start: 0;
+  padding-top: 10px;
+}
+.tp-host.tp-mobile .tp-calendar-controls {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+.tp-host.tp-mobile .tp-calendar-controls > .tp-calendar-appearance {
+  border-inline-start: 0;
+  border-top: 1px solid var(--background-modifier-border);
+  padding-inline-start: 0;
+  padding-top: 8px;
+}
+.tp-host.tp-mobile .tp-calendar-controls > .tp-calendar-visibility {
+  grid-template-columns: minmax(0, 1fr);
+}
+.tp-host.tp-mobile
+  .tp-calendar-controls
+  > :is(.tp-calendar-views, .tp-calendar-appearance, .tp-calendar-visibility)
+  > button {
+  min-height: 40px;
+}
+.tp-host .tp-calendar-grid .tp-day {
+  row-gap: 7px;
+}
+.tp-host.tp-agenda .tp-calendar-grid .tp-day {
+  row-gap: 8px;
+}
+.tp-host .tp-calendar-grid.tp-calendar-detailed .tp-day .tp-card-menu-toggle {
+  display: none;
+}
+.tp-host .tp-calendar-grid.tp-calendar-detailed .tp-day .tp-task-compact {
+  grid-template-columns: 22px minmax(0, 1fr);
+}
+.tp-host.tp-agenda .tp-calendar-grid.tp-calendar-detailed .tp-day .tp-task-compact {
+  grid-template-columns: 40px minmax(0, 1fr);
+}
+/* The title, context and actions share one leading edge, after the checkbox. */
+.tp-host .tp-calendar-grid .tp-day .tp-card-menu[open] {
+  grid-column: 2 / -1;
+  padding-top: 4px;
+  min-width: 0;
+}
+.tp-host .tp-calendar-grid .tp-day .tp-card-menu > .tp-task-meta {
+  gap: 4px 6px;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.tp-host
+  .tp-calendar-grid
+  .tp-day
+  .tp-task-meta
+  > :is(.tp-project-label, .tp-overdue-label, .tp-deadline-label, .tp-range-dates) {
+  flex: 1 1 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.tp-host .tp-calendar-grid .tp-day .tp-card-menu[open] > .tp-task-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  width: 100%;
+  max-width: 100%;
+  padding: 5px 0 0;
+  margin: 0;
+  justify-content: stretch;
+}
+.tp-host .tp-calendar-grid .tp-day .tp-card-menu > .tp-task-actions > button {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  min-height: 28px;
+  margin: 0;
+  padding: 4px;
+  box-shadow: none;
+}
+.tp-host .tp-calendar-grid .tp-day .tp-card-menu > .tp-task-actions > button svg {
+  width: 14px;
+  height: 14px;
+}
+.tp-host.tp-agenda .tp-calendar-grid .tp-day .tp-card-menu > .tp-task-actions > button {
+  height: 40px;
+  min-height: 40px;
+}
+
+.tp-host.tp-agenda .tp-calendar-grid .tp-day .tp-task-compact {
+  padding-inline: 3px;
+}
+.tp-manual-key {
+  margin: 16px 0 0;
+}
+.tp-manual-key-entry {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.8fr) minmax(0, 1.6fr);
+  gap: 8px 16px;
+  padding-block: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.tp-manual-key-entry > dt {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+.tp-manual-key-entry > dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.tp-manual-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1;
+}
+.tp-manual-symbol svg {
+  width: 16px;
+  height: 16px;
+}
+.tp-manual-swatch {
+  border-radius: 50%;
+}
+.tp-manual-symbol[data-priority] {
+  border: 1px solid currentColor;
+  border-radius: 3px;
+}
+.tp-manual-symbol[data-priority='high'] {
+  color: #ff4b55;
+}
+.tp-manual-symbol[data-priority='low'] {
+  color: #fff;
+}
+.theme-light .tp-manual-symbol[data-priority='low'] {
+  filter: drop-shadow(0 0 1px #444);
+}
+.tp-host.tp-mobile .tp-manual-key-entry {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+.tp-host.tp-mobile .tp-manual-key-entry > dd {
+  padding-inline-start: 24px;
 }
