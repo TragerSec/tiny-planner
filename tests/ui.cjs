@@ -1308,9 +1308,23 @@ const theme = require('./browser-theme.cjs');
         );
         for (const tab of ['today', 'calendar', 'kanban']) {
           await page.locator('[data-tab=' + tab + ']').click();
-          assert.ok(
-            await page.locator('.tp-appointment-time').filter({ hasText: '09:00' }).count(),
-          );
+          if (tab === 'calendar') {
+            const title = exam.locator('.tp-task-title');
+            assert.equal(await title.getAttribute('data-scheduled-time'), '09:00');
+            assert.equal(await title.isVisible(), true);
+            assert.match(await title.getAttribute('aria-label'), /09:00/);
+            assert.ok(
+              await title.evaluate((node) =>
+                getComputedStyle(node, '::before').content.includes('09:00'),
+              ),
+              'Assigned time must be rendered before the compact calendar title',
+            );
+            assert.equal(await exam.locator('.tp-task-meta .tp-appointment-time').count(), 0);
+          } else {
+            assert.ok(
+              await page.locator('.tp-appointment-time').filter({ hasText: '09:00' }).count(),
+            );
+          }
         }
         await page.locator('[data-tab=today]').click();
         const section = exam.locator('xpath=ancestor::section[1]');
