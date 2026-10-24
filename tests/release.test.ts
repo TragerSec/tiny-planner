@@ -108,6 +108,7 @@ if (args[0] === 'api') {
       env: {
         ...process.env,
         PATH: folder + ':' + process.env.PATH,
+        TMPDIR: folder,
         RELEASE_TAG: '1.0.2',
         GITHUB_REPOSITORY: 'TragerSec/tiny-planner',
         TP_RELEASE_SCENARIO: scenario,
@@ -115,10 +116,10 @@ if (args[0] === 'api') {
         TP_RELEASE_CALLS: log,
       },
     });
-    const calls = readFileSync(log, 'utf8')
-      .trim()
-      .split('\n')
-      .map((line) => JSON.parse(line));
+    assert.equal(result.error, undefined, String(result.error));
+    const recorded = readFileSync(log, 'utf8').trim();
+    assert.ok(recorded, `No mocked gh calls: status=${result.status}; stderr=${result.stderr}`);
+    const calls = recorded.split('\n').map((line) => JSON.parse(line));
     return { result, calls, operations: calls.slice(1).map((args) => args[1]) };
   };
   try {

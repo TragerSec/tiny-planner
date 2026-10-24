@@ -1,118 +1,60 @@
 # Tiny Planner
 
-A local planner for **Obsidian** that brings work, home tasks and expenses together. Tasks, areas, projects and payment history live in Markdown notes in your vault. No Dataview, TaskNotes, account or runtime internet connection is required.
+**1.0.6 · Obsidian 1.7.2+ · Desktop and mobile**
 
-## Features
+A local planner for tasks, projects and expenses. Everything stays in Markdown notes in your vault. No account, Dataview or runtime internet connection is required.
 
-| View                      | What you can do                                                                                           |
-| ------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Today, Inbox and Upcoming | Capture tasks, review overdue work and plan the next few days.                                            |
-| Calendar                  | Use Day, Week or Month; move work dates or deadlines and independently hide completed, failed or recurring tasks; choose Minimal or Detailed view. |
-| Areas & projects          | Organize work, set project deadlines and review progress.                                                 |
-| Boards                    | Move tasks through Backlog, To do, In progress, Done and Failed.                                          |
-| Statistics                | Review work and spending for the current calendar week, month, quarter or year.                           |
-| Expenses                  | Manage payments, paid history and subscriptions.                                                          |
-| Budgets                   | Set optional monthly limits by project or area, separately for each currency.                             |
-| Guide                     | Read the built-in instructions in English or Russian.                                                     |
+## What you can do
 
-Recurring tasks support presets and custom date-based RRULEs, independent occurrence history and optional end dates. Tasks have a planned date, a separate deadline, an optional estimate and separately recorded actual minutes. Existing additional work dates in notes remain supported by the calendar and workload calculations.
+| Section | Purpose |
+| --- | --- |
+| Today / Inbox / Upcoming | Capture tasks and choose what to work on. |
+| Calendar | Plan work dates and deadlines in Day, Week or Month. |
+| Areas & projects | Group work and review project progress. |
+| Boards | Move tasks through five workflow statuses. |
+| Statistics | Review work and spending by calendar period. |
+| Expenses | Record payments and manage subscriptions. |
 
-The interface follows the theme's accent color, with semantic status colors and responsive controls. Calendar cards use equal compact heights with up to two title lines; the vertical ellipsis reveals the full title, area/project, time and actions. Detailed view expands every task. Up to 1100 px, Week and Month become a dated agenda; only the whole planner page scrolls. Tasks support Low, Normal and High priority, and subscriptions have an explicit edit action. The bilingual Guide explains colors and icons. The left menu collapses through one panel icon. Dates stay beside the relevant heading or period controls. Detailed tables are collapsed until requested.
+Tasks support **Contact** (write or call someone), recurring schedules, priorities and optional time estimates. **Description** holds the brief; **Result** records the outcome. Each recurring occurrence has its own result and history.
 
-## Installation
+## Start here
 
-Requires **Obsidian 1.7.2 or newer**. Node.js is needed only for source development.
+1. Open **Tiny Planner: Open planner** from the command palette or use the calendar-check ribbon icon.
+2. Enter a task title and press **Enter** or **+**. Dates and projects are optional.
+3. Click the title to edit. Optional sections cover planning, repeats, time tracking and description/result.
+4. Use the checkmark to complete or reopen; use Boards for other statuses.
 
-### Manual installation
+Areas group projects, and projects group tasks. Tasks without a recognized project appear in Inbox. Language, date format and daily capacity are in plugin settings. The built-in **Guide** is available in Russian and English.
 
-1. Download `main.js`, `manifest.json` and `styles.css` from the same GitHub release.
-2. Put them directly in `<vault>/.obsidian/plugins/tiny-planner/`. Use your actual configuration directory if it differs from `.obsidian`.
+## Calendar
+
+- Full titles wrap naturally; card height follows the visible lines. Closed titles are muted and crossed out.
+- Work dates and deadlines are separate. Drag a work card to move that session, or a deadline card to move the deadline.
+- Daily bars show planned workload across every week. The current week has a small date underline; weekends use a subtle text color.
+- **Display** controls task visibility, details and the optional three-entry Month overview. **Show more** opens the complete day.
+- Wide calendars align multi-day tasks; narrow panes use an agenda. The sidebar can collapse for more space.
+
+Estimates and recorded spent time are separate. Payments and subscriptions do not increase work totals. Financial reports keep currencies separate; optional budgets belong to projects or areas.
+
+## Install or update
+
+1. Download **main.js**, **manifest.json** and **styles.css** from the same [GitHub release](https://github.com/TragerSec/tiny-planner/releases).
+2. Place all three directly in `<vault>/.obsidian/plugins/tiny-planner/`, using your actual configuration directory if different.
 3. Reload Obsidian and enable **Tiny Planner** in **Settings → Community plugins**.
-4. Use the calendar-check ribbon icon or **Tiny Planner: Open planner** in the command palette.
 
-To update, replace those three files and reload. Planner notes remain in the vault.
+For updates, replace those three files together. Keep your existing `data.json` and planner notes. Node.js is needed only for development.
 
-## Getting started
+## Your data
 
-After enabling the plugin, open Obsidian's command palette, search for `Tiny Planner`, and select **Tiny Planner: Open planner**. You can also use the calendar-check icon in the left ribbon.
+New notes default to `Planner/Areas`, `Planner/Projects` and `Planner/Tasks`. The plugin discovers planner notes throughout the vault, preserves unknown note properties and bodies, makes no runtime network requests and sends no telemetry. Deletion uses Obsidian's configured trash.
 
-![Obsidian command palette with Tiny Planner: Open planner selected](docs/showcase/open-planner.png)
+Up to 20 recent form drafts can be recovered. Undo keeps 50 changes in the current session, excluding creation and import, and protects conflicting external edits. Legacy import copies supported notes without modifying originals.
 
-1. Create an area such as Work or Home in **Areas & projects**.
-2. Add a project under that area.
-3. Enter a title in **Today** and press Enter or **+**. **Options** reveals additional quick-entry fields; the sliders icon opens the full form.
-4. Click a task title to edit it. Use the checkmark, failure control or Boards to change its status.
-5. Set the task date and deadline in its form, plan in Calendar and read the Guide for the detailed mechanics.
-
-Tasks can have no date or project. Inbox collects tasks without a resolved project. Language and date format are configurable in plugin settings; Russian is the initial default. Supported formats are `DD.MM.YYYY`, `MM/DD/YYYY` and `YYYY-MM-DD`.
-
-## Screenshots
-
-These images illustrate the main views. Version 1.0.4 uses the compact calendar cards and grouped controls described above.
-
-### Upcoming
-
-Review upcoming tasks grouped by date, including appointments, payments and recurring tasks. Search or filter by area and project, and add tasks from the quick-entry row.
-
-![Upcoming tasks grouped by date with area and project filters](docs/showcase/upcoming.png)
-
-### Calendar
-
-Plan tasks in Day, Week or Month view. This month view shows task statuses, appointments and payments, with planned and recorded time on completed work.
-
-![Monthly calendar with task statuses, appointments, payments and planned and spent time](docs/showcase/calendar.png)
-
-### Areas & projects
-
-Group projects by area and review their progress. Expand a project to see its tasks, add new work or open its board.
-
-![Projects grouped by area with an expanded project and its tasks](docs/showcase/areas-projects.png)
-
-### Expenses
-
-Manage upcoming payments and paid expenses side by side for the selected calendar period. Switch to Subscriptions to manage recurring charges, or open financial statistics for spending reports.
-
-![Expenses view with upcoming payments, paid expenses and period controls](docs/showcase/expenses.png)
-
-### Statistics: period summary
-
-Review completed and failed work and recorded time for the current week, month, quarter or year. Charts cover the full selected period; expand Daily details for individual values.
-
-![Work statistics with monthly task completion and time-spent charts](docs/showcase/statistics-period.png)
-
-### Statistics: overall progress
-
-See task and project totals, recorded time, the status distribution and progress by project. This overview covers all time, separately from the selected period summary above it.
-
-![All-time task statistics, status distribution and progress by project](docs/showcase/statistics-overview.png)
-
-## Planning and reporting
-
-- Calendar orders Done, then Failed, then unfinished tasks, considering appointment times within each group. Subscriptions and separate deadline cards appear at the bottom of their day.
-- A multi-day task appears on selected work dates and its deadline, with subtle continuation marks on intervening days. These marks inherit status, reserve the checkbox gutter without a checkbox, and add no workload. Moving a work card changes that day; moving a deadline card changes the deadline.
-- Dated boards place closed work on its resolution day, falling back to the planned day when no resolution date was recorded. A later deadline does not keep closed tasks on Today; All retains their history.
-- Planned minutes and actual minutes are separate. Completed work cards show Plan and positive recorded Spent values. Missing estimates remain explicitly unknown in workload totals.
-- Daily capacity defaults to 480 minutes. Weekly/monthly views retain daily availability rather than inventing a single period limit.
-- Reporting periods cover the complete current Monday–Sunday week, month, quarter or year. Closing old work today credits its original planned reporting day; its actual resolution date is stored separately.
-- Closed time totals include Done/Failed minutes. Reopening removes them from closed totals while keeping the entries. Payments and subscriptions do not increase work metrics.
-- Financial history uses actual payment dates. All currencies remain visible in separate line charts with independent monetary scales and matching date ranges. Exact daily values are available together; currencies are never converted or summed.
-- Expenses owns payment operations and history. Financial Statistics presents aggregates and distributions. Subscription commitment estimates are independent of report periods.
-
-See [GUIDE.md](GUIDE.md) and the localized Guide tab for recurring rules, workload, finances and budgets.
-
-## Storage and privacy
-
-New notes default to `Planner/Areas`, `Planner/Projects` and `Planner/Tasks`. Editing preserves note bodies and unknown frontmatter properties; Obsidian may normalize YAML formatting/comments. There are no automatic migrations of unrelated notes.
-
-The plugin uses vault APIs, makes no runtime network requests and sends no telemetry. No remote code, fonts, account system or separate synchronization service is included. Deletion uses Obsidian's configured trash.
-
-Undo retains up to 50 changes in the current session and refuses conflicting external edits. Creation and import are not undo entries. The optional legacy TOP importer explicitly copies notes from its supported layout without modifying originals.
-
-[Data schema](docs/SCHEMA.md) · [Architecture](docs/ARCHITECTURE.md) · [Privacy and security](SECURITY.md)
+[Detailed guide](GUIDE.md) · [Installation](INSTALL.md) · [Data schema](docs/SCHEMA.md) · [Security](SECURITY.md)
 
 ## Development
 
-Use **Node.js 22+** and the committed lockfile:
+Use Node.js 22+ and the committed lockfiles:
 
 ```sh
 npm ci --ignore-scripts
@@ -120,29 +62,11 @@ npm ci --prefix tools/obsidian-lint --ignore-scripts
 npm run verify:build
 npm run check
 npm run verify:build
-npx --no-install playwright install chromium
+npx --no-install playwright install --with-deps chromium
 npm run test:browser
 npm run package
 ```
 
-`check` validates release metadata, runs the pinned official Obsidian recommended linter (zero warnings), checks TypeScript, builds `main.js` and runs automated tests. `verify:build` rejects a stale committed runtime. `package` writes installation files to `dist/tiny-planner/`. Keep the guarded `vendor/rrule` engine and its pinned provenance dependency.
+`check` validates versions, runs the official Obsidian linter with zero warnings, checks types, builds and tests. `verify:build` rejects a stale committed bundle. Both GitHub workflows run these checks before publication. Run an Obsidian preview scan on the final commit before creating its version tag.
 
-GitHub checks pushes and pull requests. Pushing an exact version tag triggers the Release workflow, including build consistency and browser checks.
-
-Tests emulate Obsidian APIs. For application compatibility checks, see [Obsidian QA](docs/OBSIDIAN-QA.md).
-
-[Development notes](docs/DEVELOPMENT.md) · [Architecture](docs/ARCHITECTURE.md)
-
-## Support and contributions
-
-Open an issue with plugin/Obsidian versions, operating system, reproduction steps and a small anonymized example. Use private vulnerability reporting for security issues when the repository owner enables it.
-
-Run relevant checks for contributions. Preserve local operation, unknown note fields and the guarded recurrence engine.
-
-## License
-
-[MIT](LICENSE). Bundled recurrence code retains its licenses in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [vendor/rrule](vendor/rrule/README.md).
-
-Assigned task time (HH:mm) stays visible before the title in both Minimal and Detailed calendar views, including work, deadline and continuation cards. Untimed tasks show no placeholder. This is the optional local appointment time, not the estimated duration.
-
-Developer checks use an isolated, pinned `tools/obsidian-lint` toolchain; none of it is included in the installed plugin. Initial indexing enumerates Markdown notes across the vault to find `topSchema: 1` records, including notes outside the creation folder. It does not send paths or contents anywhere.
+[Development](docs/DEVELOPMENT.md) · [Release notes](RELEASE_NOTES.md) · [MIT license](LICENSE) · [Third-party notices](THIRD_PARTY_NOTICES.md)

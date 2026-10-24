@@ -180,6 +180,7 @@ class Setting {
     const node = document.createElement('input');
     this.label.append(node);
     const control = {
+      inputEl: node,
       setValue(value) {
         node.value = value;
         return control;
@@ -319,8 +320,12 @@ function makeDOM() {
     this.appendChild(node);
     return node;
   };
-  dom.window.Node.prototype.createDiv = function (options) { return this.createEl('div', options); };
-  dom.window.Node.prototype.createSpan = function (options) { return this.createEl('span', options); };
+  dom.window.Node.prototype.createDiv = function (options) {
+    return this.createEl('div', options);
+  };
+  dom.window.Node.prototype.createSpan = function (options) {
+    return this.createEl('span', options);
+  };
   dom.window.Node.prototype.createSvg = function (tag, { attr = {} } = {}) {
     const node = this.ownerDocument.createElementNS('http://www.w3.org/2000/svg', tag);
     for (const [key, value] of Object.entries(attr)) node.setAttribute(key, String(value));

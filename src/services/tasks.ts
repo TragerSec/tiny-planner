@@ -17,6 +17,7 @@ import { normalizeTask, safeAmount } from '../core/normalize';
 export interface TaskDraft {
   title: string;
   description?: string;
+  result?: string;
   status?: Status;
   project: string;
   scheduled: string;
@@ -175,6 +176,11 @@ export class TaskService {
       (typeof draft.description !== 'string' || draft.description.length > 100000)
     )
       throw new Error('Description must be at most 100000 characters.');
+    if (
+      draft.result !== undefined &&
+      (typeof draft.result !== 'string' || draft.result.length > 100000)
+    )
+      throw new Error('Result must be at most 100000 characters.');
     if (!draft.title.trim()) throw new Error('A title is required.');
     if (
       draft.scheduledTime !== undefined &&
@@ -226,15 +232,18 @@ export class TaskService {
     return this.createNote('task', draft.title, {
       status: draft.recurrence ? 'todo' : (draft.status ?? 'todo'),
       description: draft.description ?? '',
+      ...(!draft.recurrence && draft.result !== undefined ? { result: draft.result } : {}),
       ...(!draft.recurrence && draft.status === 'done'
         ? { completedDate: draft.kind === 'payment' ? draft.paidOn || day() : day() }
         : !draft.recurrence && draft.status === 'failed'
           ? { failedDate: day() }
           : {}),
-      ...(draft.recurrence && ((draft.status && draft.status !== 'todo') || draft.minutes > 0)
+      ...(draft.recurrence &&
+      ((draft.status && draft.status !== 'todo') || draft.minutes > 0 || !!draft.result)
         ? {
             topOccurrences: {
               [first]: {
+                ...(draft.result !== undefined ? { result: draft.result } : {}),
                 status: draft.status ?? 'todo',
                 minutes: Math.round(draft.minutes),
                 ...(isActive(draft.status ?? 'todo')
@@ -379,6 +388,7 @@ export class TaskService {
       Object.assign(fm, {
         title: draft.title.trim(),
         ...(draft.description !== undefined ? { description: draft.description } : {}),
+        ...(draft.result !== undefined ? { result: draft.result } : {}),
         project: draft.project ? `[[${draft.project}]]` : '',
         scheduled: draft.scheduled || null,
         ...(draft.scheduledTime !== undefined
@@ -446,6 +456,7 @@ export class TaskService {
     draft: TaskDraft,
     minutes: number,
     status: Status,
+    checkConflicts = false,
   ): Promise<void> {
     if (item.task.kind === 'subscription' || draft.kind === 'subscription')
       throw new Error('Use subscription settings for expense trackers.');
@@ -458,6 +469,38 @@ export class TaskService {
     await this.patchTask(item.task.path, (fm) => {
       if (String(fm.taskType ?? fm.kind).toLowerCase() === 'subscription')
         throw new Error('Use subscription settings for expense trackers.');
+      if (checkConflicts) {
+        const live = normalizeTask(item.task.path, fm);
+        const canonicalProject = (path: string) => {
+          if (!path) return '';
+          const full = path.endsWith('.md') ? path : path + '.md';
+          if (this.repo.project(full)) return full;
+          return this.app.metadataCache.getFirstLinkpathDest(path, item.task.path)?.path || path;
+        };
+        const editable = (task: Task) => ({
+          title: task.title,
+          description: task.description,
+          result: task.result || '',
+          project: canonicalProject(task.project),
+          kind: task.kind,
+          status: task.status,
+          scheduled: task.scheduled,
+          scheduledTime: task.scheduledTime || '',
+          due: task.due,
+          recurrence: task.recurrence,
+          plannedMinutes: task.plannedMinutes || 0,
+          workDates: task.workDates || [],
+          minutes: task.minutes,
+          priority: task.priority,
+          amount: task.amount,
+          currency: task.currency,
+          seriesEnd: task.seriesEnd,
+          occurrence: item.recurring ? task.occurrences[item.key] : undefined,
+          resolvedOn: task.resolvedOn,
+        });
+        if (JSON.stringify(editable(live)) !== JSON.stringify(editable(item.task)))
+          throw new Error('Task was changed elsewhere. Reopen it and review your draft.');
+      }
       this.guardPaymentKind(fm, draft);
       Object.assign(fm, {
         title: draft.title.trim(),
@@ -500,6 +543,7 @@ export class TaskService {
           records[key] = {
             ...(records[key] || { status }),
             minutes: Math.round(minutes),
+            ...(draft.result !== undefined ? { result: draft.result } : {}),
             ...(draft.kind === 'payment' && status === 'done'
               ? {
                   amount: draft.amount !== undefined ? draft.amount : item.task.amount,
@@ -515,6 +559,7 @@ export class TaskService {
         }
       } else {
         fm.actualMinutes = Math.round(minutes);
+        if (draft.result !== undefined) fm.result = draft.result;
         if (status !== item.status || item.recurring)
           this.writeStatus(fm, { ...item, recurring: false }, status);
         if (draft.kind === 'payment' && status === 'done') {

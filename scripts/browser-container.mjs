@@ -19,26 +19,55 @@ const compiler = spawnSync(
 );
 if (compiler.error) throw compiler.error;
 if (compiler.status !== 0) process.exit(compiler.status ?? 1);
-const suite = process.argv[2] || 'tests/ui.cjs';
-if (!['tests/ui.cjs', 'tests/previews.cjs'].includes(suite))
+const suite = process.argv[2] || 'all';
+if (
+  ![
+    'all',
+    'tests/ui.cjs',
+    'tests/previews.cjs',
+    'tests/theme-matrix.cjs',
+    'tests/mobile.cjs',
+    'tests/usability.cjs',
+    'tests/controls.cjs',
+    'tests/calendar-surfaces.cjs',
+    'tests/design-audit.cjs',
+  ].includes(suite)
+)
   throw new Error('Unknown browser suite.');
-const run = spawnSync(process.execPath, [suite], {
-  stdio: 'inherit',
-  timeout: 180000,
-  env: {
-    ...process.env,
-    TP_BROWSER_EXE: executable,
-    TP_CHROMIUM_EXECUTABLE: executable,
-    LD_PRELOAD: adapter,
-    TMPDIR: temporary,
-    TP_CHROMIUM_ARGS: JSON.stringify([
-      '--no-sandbox',
-      '--no-zygote',
-      '--single-process',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-    ]),
-  },
-});
-if (run.error) console.error(run.error);
-process.exitCode = run.status ?? 1;
+const suites =
+  suite === 'all'
+    ? [
+        'tests/ui.cjs',
+        'tests/usability.cjs',
+        'tests/theme-matrix.cjs',
+        'tests/mobile.cjs',
+        'tests/controls.cjs',
+        'tests/calendar-surfaces.cjs',
+        'tests/design-audit.cjs',
+      ]
+    : [suite];
+for (const selected of suites) {
+  const run = spawnSync(process.execPath, [selected], {
+    stdio: 'inherit',
+    timeout: 600000,
+    env: {
+      ...process.env,
+      TP_BROWSER_EXE: executable,
+      TP_CHROMIUM_EXECUTABLE: executable,
+      LD_PRELOAD: adapter,
+      TMPDIR: temporary,
+      TP_CHROMIUM_ARGS: JSON.stringify([
+        '--no-sandbox',
+        '--no-zygote',
+        '--single-process',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+      ]),
+    },
+  });
+  if (run.error) console.error(run.error);
+  if (run.status !== 0) {
+    process.exitCode = run.status ?? 1;
+    break;
+  }
+}

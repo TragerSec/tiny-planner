@@ -10,8 +10,12 @@ Node.prototype.createEl = function (tag, { cls = '', text = '' } = {}) {
   this.appendChild(node);
   return node;
 };
-Node.prototype.createDiv = function (options) { return this.createEl('div', options); };
-Node.prototype.createSpan = function (options) { return this.createEl('span', options); };
+Node.prototype.createDiv = function (options) {
+  return this.createEl('div', options);
+};
+Node.prototype.createSpan = function (options) {
+  return this.createEl('span', options);
+};
 Node.prototype.createSvg = function (tag, { attr = {} } = {}) {
   const node = this.ownerDocument.createElementNS('http://www.w3.org/2000/svg', tag);
   for (const [key, value] of Object.entries(attr)) node.setAttribute(key, String(value));
@@ -155,38 +159,73 @@ class PluginSettingTab {
   constructor(app, plugin) {
     this.containerEl = document.createElement('div');
   }
+  update() {
+    this.containerEl.replaceChildren();
+    for (const definition of this.getSettingDefinitions()) {
+      const setting = new Setting(this.containerEl).setName(definition.name);
+      if (definition.desc) setting.setDesc(definition.desc);
+      definition.render?.(setting);
+    }
+  }
 }
+// Model Obsidian's Setting DOM and every control actually used by the plugin.
 class Setting {
   constructor(parent) {
-    this.row = document.createElement('div');
-    parent.append(this.row);
-    this.label = document.createElement('label');
-    this.row.append(this.label);
+    this.row = parent.createDiv({ cls: 'setting-item' });
+    const info = this.row.createDiv({ cls: 'setting-item-info' });
+    this.label = info.createDiv({ cls: 'setting-item-name' });
+    this.description = info.createDiv({ cls: 'setting-item-description' });
+    this.controls = this.row.createDiv({ cls: 'setting-item-control' });
   }
   setName(name) {
     this.label.textContent = name;
     return this;
   }
-  setDesc() {
+  setDesc(text) {
+    this.description.textContent = text;
     return this;
   }
-  addText() {
+  addText(callback) {
+    const node = this.controls.createEl('input');
+    node.type = 'text';
+    const control = {
+      inputEl: node,
+      setValue(value) {
+        node.value = value;
+        return control;
+      },
+      onChange(fn) {
+        node.addEventListener('input', () => void fn(node.value));
+        return control;
+      },
+    };
+    callback(control);
     return this;
   }
-  addButton() {
+  addButton(callback) {
+    const node = this.controls.createEl('button');
+    const control = {
+      buttonEl: node,
+      setButtonText(value) {
+        node.textContent = value;
+        return control;
+      },
+      onClick(fn) {
+        node.addEventListener('click', fn);
+        return control;
+      },
+    };
+    callback(control);
     return this;
   }
   addDropdown(callback) {
-    const node = document.createElement('select');
-    this.label.append(node);
+    const node = this.controls.createEl('select');
     const control = {
       selectEl: node,
       addOptions(options) {
         for (const [value, text] of Object.entries(options)) {
-          const option = document.createElement('option');
+          const option = node.createEl('option', { text });
           option.value = value;
-          option.textContent = text;
-          node.append(option);
         }
         return control;
       },
@@ -233,6 +272,9 @@ const iconPaths = {
   'calendar-days':
     '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 11h18M7 15h2m3 0h2m3 0h2"/>',
   'file-text': '<path d="M14 2H5v20h14V7ZM14 2v6h5M8 12h8M8 16h6"/>',
+  'chevron-down': '<path d="m6 9 6 6 6-6"/>',
+  'message-circle':
+    '<path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z"/>',
   'chevron-left': '<path d="m15 18-6-6 6-6"/>',
   'chevron-right': '<path d="m9 18 6-6-6-6"/>',
   'undo-2': '<path d="m3 8 4-4M3 8l4 4M3 8h11a6 6 0 0 1 0 12"/>',
@@ -253,7 +295,9 @@ function setIcon(n, icon) {
   svg.innerHTML =
     icon === 'ellipsis-vertical'
       ? '<circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>'
-      : iconPaths[icon] || iconPaths.circle;
+      : icon === 'move-right'
+        ? '<path d="M18 8l4 4-4 4M2 12h20"/>'
+        : iconPaths[icon] || iconPaths.circle;
   n.append(svg);
 }
 const notices = [];

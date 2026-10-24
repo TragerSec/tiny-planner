@@ -18,10 +18,15 @@ import {
   timeInput,
   readTime,
 } from './dom';
+import { keepFormDraft, taskDraftBaseline } from './form-draft';
+import { repeatEditor, repeatPreview, simpleSchedule } from './repeat-editor';
+import { workDaysEditor } from './work-days';
 import { words, Words, messageText } from './i18n';
 import type TinyPlanner from '../main';
 export class BaseModal extends Modal {
   readonly w: Words;
+  protected draft?: ReturnType<typeof keepFormDraft>;
+  private formError?: HTMLElement;
   constructor(readonly plugin: TinyPlanner) {
     super(plugin.app);
     this.w = words(plugin.settings.language);
@@ -29,27 +34,52 @@ export class BaseModal extends Modal {
   onOpen(): void {
     this.contentEl.classList.add('tp-modal');
     this.contentEl.lang = this.plugin.settings.language;
-    const grow = () => {
-      for (const area of this.contentEl.querySelectorAll<HTMLTextAreaElement>('textarea')) {
-        area.setCssStyles({ height: 'auto' });
-        area.setCssStyles({ height: `${Math.max(96, area.scrollHeight + 2)}px` });
-      }
+    const grow = (areas: HTMLTextAreaElement[]) => {
+      const visible = areas.filter((area) => area.getClientRects().length > 0);
+      for (const area of visible) area.setCssStyles({ height: 'auto' });
+      const heights = visible.map((area) => Math.max(96, area.scrollHeight + 2));
+      visible.forEach((area, index) => area.setCssStyles({ height: `${heights[index]}px` }));
     };
-    this.contentEl.addEventListener('input', grow);
-    this.contentEl.ownerDocument.defaultView?.queueMicrotask(grow);
+    const growAll = () =>
+      grow([...this.contentEl.querySelectorAll<HTMLTextAreaElement>('textarea')]);
+    this.contentEl.addEventListener('input', (event) => {
+      const target = event.target as HTMLElement;
+      if (target.tagName === 'TEXTAREA') grow([target as HTMLTextAreaElement]);
+    });
+    this.contentEl.addEventListener('toggle', growAll, true);
+    this.contentEl.addEventListener(
+      'invalid',
+      (event) => {
+        let parent = (event.target as HTMLElement).parentElement;
+        while (parent && parent !== this.contentEl) {
+          if (parent.tagName === 'DETAILS') (parent as HTMLDetailsElement).open = true;
+          parent = parent.parentElement;
+        }
+      },
+      true,
+    );
+    this.contentEl.ownerDocument.defaultView?.queueMicrotask(growAll);
     this.contentEl.style.setProperty(
       '--tp-ui-scale',
       String(this.plugin.normalizeUiScale(this.plugin.settings.uiScalePercent) / 100),
     );
   }
   onClose(): void {
+    this.draft?.capture();
     this.contentEl.replaceChildren();
   }
   async run(fn: () => Promise<unknown>, close = true): Promise<void> {
     try {
       await fn();
-      if (close) this.close();
+      if (close) {
+        this.draft?.commit();
+        this.close();
+      }
     } catch (e) {
+      this.draft?.capture();
+      this.formError ??= el(this.contentEl, 'p', 'tp-form-error');
+      this.formError.setAttribute('role', 'alert');
+      this.formError.textContent = `${this.w.saveError} ${messageText(e instanceof Error ? e.message : String(e), this.plugin.settings.language)}`;
       new Notice(
         messageText(e instanceof Error ? e.message : String(e), this.plugin.settings.language),
       );
@@ -148,6 +178,7 @@ export class TaskModal extends BaseModal {
       ['FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', w.weekdays],
       ['FREQ=MONTHLY', w.monthly],
       ['FREQ=YEARLY', w.yearly],
+      ['builder', w.repeatBuilder],
       ['custom', w.custom],
     ];
     const preset = rule
@@ -157,15 +188,23 @@ export class TaskModal extends BaseModal {
     const repeat = select(
       field(grid, w.repeat),
       opts,
-      opts.some((o) => o[0] === preset) ? preset : 'custom',
+      opts.some((o) => o[0] === preset) ? preset : simpleSchedule(rule) ? 'builder' : 'custom',
     );
     const customLabel = field(form, w.custom);
     const custom = input(customLabel, 'text', rule, 'FREQ=WEEKLY;BYDAY=MO,TH');
+    let updatePreview = () => undefined as void;
+    const editor = repeatEditor(form, rule, w, () => updatePreview());
     let repeating = !!repeat.value;
     let taskDue = formatDate(task?.due ?? this.defaults.due ?? '', this.plugin.settings.dateFormat);
     let repeatEnd = formatDate(recurrenceEnd(rule), this.plugin.settings.dateFormat);
     const updateRepeat = () => {
       customLabel.hidden = repeat.value !== 'custom';
+      custom.disabled = repeat.value !== 'custom';
+      editor.box.hidden = repeat.value !== 'builder';
+      for (const control of editor.box.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
+        'input, select',
+      ))
+        control.disabled = repeat.value !== 'builder';
       const next = !!repeat.value;
       if (next !== repeating) {
         if (repeating) repeatEnd = due.value;
@@ -190,12 +229,17 @@ export class TaskModal extends BaseModal {
     });
     updateRepeat();
     const recurrenceValue = (end: string) => {
-      const raw = repeat.value === 'custom' ? custom.value.trim() : repeat.value;
+      const raw =
+        repeat.value === 'custom'
+          ? custom.value.trim()
+          : repeat.value === 'builder'
+            ? editor.value()
+            : repeat.value;
       const base = repeat.value !== 'custom' && repeat.value === preset ? rule : raw;
       return raw ? withRecurrenceEnd(base, end) : '';
     };
     const preview = el(form, 'small', 'tp-muted tp-repeat-preview');
-    const updatePreview = () => {
+    updatePreview = () => {
       preview.hidden = !repeat.value;
       if (!repeat.value) return;
       try {
@@ -205,9 +249,17 @@ export class TaskModal extends BaseModal {
           preview.textContent = w.invalid;
           return;
         }
-        const first = firstRepeatDate(recurrenceValue(end), start);
+        const dates = repeatPreview(recurrenceValue(end), start);
+        const first = dates[0];
         preview.textContent = first
-          ? `${w.firstRepeat}: ${formatDate(first, this.plugin.settings.dateFormat)}`
+          ? `${w.firstRepeat}: ${formatDate(first, this.plugin.settings.dateFormat)}${
+              dates.length > 1
+                ? ` · ${w.repeatNext}: ${dates
+                    .slice(1)
+                    .map((d) => formatDate(d, this.plugin.settings.dateFormat))
+                    .join(', ')}`
+                : ''
+            }`
           : messageText(
               'The repeat rule has no occurrence within its dates.',
               this.plugin.settings.language,
@@ -234,7 +286,7 @@ export class TaskModal extends BaseModal {
     );
     const kind = select(
       field(grid, w.kind),
-      (['task', 'meeting', 'payment', 'status'] as Kind[]).map((k) => [k, w[k]]),
+      (['task', 'meeting', 'contact', 'payment', 'status'] as Kind[]).map((k) => [k, w[k]]),
       task?.kind ?? this.defaults.kind ?? 'task',
     );
     const priority = select(
@@ -337,6 +389,58 @@ export class TaskModal extends BaseModal {
     description.rows = 3;
     description.maxLength = 100000;
     description.placeholder = w.description;
+    const result = el(field(form, w.result), 'textarea', 'tp-result');
+    result.value = this.item?.recurring
+      ? (task?.occurrences[this.item.key]?.result ?? '')
+      : (task?.result ?? this.defaults.result ?? '');
+    result.rows = 3;
+    result.maxLength = 100000;
+    result.placeholder = w.resultHint;
+    result.disabled = !!this.item?.recurring && !this.item.key;
+    const work = workDaysEditor(
+      form,
+      task?.workDates ?? this.defaults.workDates ?? [],
+      date,
+      due,
+      planned,
+      repeat,
+      w,
+      this.plugin.settings.dateFormat,
+      this.plugin.settings.language,
+    );
+    const group = (label: string, name: string, opened: boolean) => {
+      const details = el(form, 'details', 'tp-form-section');
+      details.dataset.section = name;
+      details.open = opened;
+      el(details, 'summary', '', label);
+      return el(details, 'div', 'tp-form-section-body');
+    };
+    const planning = group(
+      w.planningOptions,
+      'planning',
+      !!appointment.value ||
+        !['todo', 'backlog'].includes(status.value) ||
+        priority.value !== 'normal' ||
+        Number(planned.value) > 0 ||
+        work.value().length > 0,
+    );
+    const planningGrid = el(planning, 'div', 'tp-form-grid');
+    for (const control of [status, appointment, priority, planned])
+      planningGrid.appendChild(control.closest('.tp-field')!);
+    planning.appendChild(work.box);
+    const repeatingGroup = group(w.repeatOptions, 'repeat', !!repeat.value);
+    repeatingGroup.append(repeat.closest('.tp-field')!, editor.box, customLabel, preview);
+    const tracking = group(w.timeTracking, 'tracking', Number(minutes.value) > 0);
+    tracking.appendChild(minutes.closest('.tp-field')!);
+    const notes = group(
+      w.descriptionAndResult,
+      'description',
+      !!description.value || !!result.value,
+    );
+    notes.append(description.closest('.tp-field')!, result.closest('.tp-field')!);
+    // Type stays in the main form so choosing Contact needs no extra navigation.
+    for (const control of [project, kind, date, due, amount, currency, paymentDate])
+      grid.appendChild(control.closest('.tp-field')!);
     if (this.item?.recurring && !this.item.key) {
       minutes.disabled = true;
       if (status) status.disabled = true;
@@ -368,11 +472,16 @@ export class TaskModal extends BaseModal {
         const draft: TaskDraft = {
           title: title.value,
           description: description.value,
+          result: result.disabled ? undefined : result.value,
           status: status.value as Status,
           project: project.value,
           scheduled: readDate(date),
           scheduledTime: readTime(appointment),
-          workDates: recurrence ? [] : (task?.workDates ?? this.defaults.workDates),
+          workDates: recurrence
+            ? []
+            : work.value().length || task?.workDates?.length
+              ? work.value()
+              : undefined,
           plannedMinutes: Number(planned.value),
           due: recurrence ? '' : readDate(due),
           recurrence,
@@ -393,6 +502,7 @@ export class TaskModal extends BaseModal {
             draft,
             Number(minutes.value),
             (status?.value ?? this.item.status) as Status,
+            true,
           );
         } else {
           await this.plugin.service.createTask(draft);
@@ -405,6 +515,57 @@ export class TaskModal extends BaseModal {
         save.disabled = false;
       });
     });
+    this.draft = keepFormDraft(
+      this.plugin,
+      form,
+      `form:task:${task?.path ?? `new:${this.defaults.kind || 'task'}`}:${this.item?.key || ''}`,
+      task ? taskDraftBaseline(task, this.item?.key) : '',
+      {
+        title,
+        project,
+        status,
+        kind,
+        priority,
+        date,
+        appointment,
+        due,
+        repeat,
+        custom,
+        planned,
+        minutes,
+        amount,
+        currency,
+        paymentDate,
+        description,
+        result,
+        workDates: work.state,
+        ...editor.controls,
+      },
+      w,
+      () => {
+        editor.refresh();
+        repeating = !!repeat.value;
+        if (repeating) repeatEnd = due.value;
+        else taskDue = due.value;
+        updateRepeat();
+        updatePreview();
+        updatePayment();
+        work.refresh();
+        if (
+          appointment.value ||
+          !['todo', 'backlog'].includes(status.value) ||
+          priority.value !== 'normal' ||
+          Number(planned.value) > 0 ||
+          work.value().length
+        )
+          (planning.parentElement as HTMLDetailsElement).open = true;
+        if (repeat.value) (repeatingGroup.parentElement as HTMLDetailsElement).open = true;
+        if (Number(minutes.value) > 0) (tracking.parentElement as HTMLDetailsElement).open = true;
+        if (description.value || result.value)
+          (notes.parentElement as HTMLDetailsElement).open = true;
+      },
+    );
+    // Description is kept explicitly along with all other editable fields.
     title.focus();
   }
 }
@@ -444,6 +605,60 @@ export class MoveModal extends BaseModal {
     );
   }
 }
+export class CalendarJumpModal extends BaseModal {
+  constructor(
+    plugin: TinyPlanner,
+    readonly selected: string,
+    readonly choose: (date: string) => void,
+  ) {
+    super(plugin);
+  }
+  onOpen(): void {
+    super.onOpen();
+    el(this.contentEl, 'h2', '', this.w.goToDate);
+    const form = el(this.contentEl, 'form', 'tp-calendar-jump-form');
+    const fields = el(form, 'div', 'tp-calendar-jump-fields');
+    const date = input(field(fields, this.w.calendarDay), 'number', this.selected.slice(8));
+    date.min = '1';
+    date.max = '31';
+    date.required = true;
+    date.dataset.jumpDay = 'true';
+    const month = select(
+      field(fields, this.w.pickerMonth),
+      Array.from({ length: 12 }, (_, i) => [
+        String(i + 1).padStart(2, '0'),
+        new Intl.DateTimeFormat(this.plugin.settings.language === 'ru' ? 'ru-RU' : 'en-US', {
+          month: 'long',
+          timeZone: 'UTC',
+        }).format(new Date(Date.UTC(2026, i, 1))),
+      ]),
+      this.selected.slice(5, 7),
+    );
+    month.dataset.jumpMonth = 'true';
+    const year = input(field(fields, this.w.pickerYear), 'number', this.selected.slice(0, 4));
+    year.min = '1';
+    year.max = '9999';
+    year.required = true;
+    year.dataset.jumpYear = 'true';
+    const actions = el(form, 'div', 'tp-modal-actions');
+    button(actions, this.w.cancel, () => this.close());
+    const apply = button(actions, this.w.goToDate, () => {}, 'mod-cta');
+    apply.type = 'submit';
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const key = `${year.value.padStart(4, '0')}-${month.value}-${date.value.padStart(2, '0')}`;
+      if (!dateKey(key)) {
+        date.setCustomValidity(this.w.invalidCalendarDate);
+        date.reportValidity();
+        return;
+      }
+      this.close();
+      this.choose(key);
+    });
+    form.addEventListener('input', () => date.setCustomValidity(''));
+    form.addEventListener('change', () => date.setCustomValidity(''));
+  }
+}
 export class DeleteModal extends BaseModal {
   constructor(
     plugin: TinyPlanner,
@@ -470,6 +685,37 @@ export class DeleteModal extends BaseModal {
       () => void this.run(() => this.plugin.service.trash(this.item.task.path, 'task')),
       'mod-warning',
     );
+  }
+}
+export class DeleteEntityModal extends BaseModal {
+  constructor(
+    plugin: TinyPlanner,
+    readonly type: 'area' | 'project',
+    readonly entity: Area | Project,
+  ) {
+    super(plugin);
+  }
+  onOpen(): void {
+    super.onOpen();
+    this.contentEl.dataset.deleteEntity = this.type;
+    el(this.contentEl, 'h2', '', this.type === 'area' ? this.w.deleteArea : this.w.deleteProject);
+    el(this.contentEl, 'p', '', this.entity.title);
+    el(this.contentEl, 'p', 'tp-muted', this.w.deleteEntityHelp);
+    const actions = el(this.contentEl, 'div', 'tp-modal-actions');
+    const cancel = button(actions, this.w.cancel, () => this.close());
+    const remove = button(
+      actions,
+      this.w.remove,
+      () => {
+        if (remove.disabled) return;
+        remove.disabled = true;
+        void this.run(() => this.plugin.service.trash(this.entity.path, this.type)).finally(() => {
+          remove.disabled = false;
+        });
+      },
+      'mod-warning',
+    );
+    cancel.focus();
   }
 }
 export class EntityModal extends BaseModal {
@@ -528,8 +774,24 @@ export class EntityModal extends BaseModal {
     budgetCurrency.pattern = '[A-Za-z]{3}';
     budgetCurrency.maxLength = 3;
     budgetCurrency.required = true;
+    const budget = el(form, 'details', 'tp-form-section');
+    budget.open = this.entity?.monthlyBudget != null;
+    el(budget, 'summary', '', this.w.budgets);
+    const body = el(budget, 'div', 'tp-form-section-body tp-form-grid');
+    body.append(budgetAmount.closest('.tp-field')!, budgetCurrency.closest('.tp-field')!);
     const actions = el(form, 'div', 'tp-modal-actions');
     button(actions, this.w.cancel, () => this.close());
+    const entity = this.entity;
+    if (entity)
+      button(
+        actions,
+        this.w.remove,
+        () => {
+          this.close();
+          new DeleteEntityModal(this.plugin, this.type, entity).open();
+        },
+        'mod-warning',
+      );
     const save = el(actions, 'button', 'mod-cta', this.w.save);
     save.type = 'submit';
     form.addEventListener('submit', (e) => {
@@ -566,6 +828,24 @@ export class EntityModal extends BaseModal {
         save.disabled = false;
       });
     });
+    this.draft = keepFormDraft(
+      this.plugin,
+      form,
+      `form:${this.type}:${this.entity?.path || 'new'}`,
+      this.entity ? JSON.stringify(this.entity) : '',
+      {
+        title,
+        budgetAmount,
+        budgetCurrency,
+        ...(area ? { area } : {}),
+        ...(status ? { status } : {}),
+        ...(due ? { due } : {}),
+      },
+      this.w,
+      () => {
+        if (budgetAmount.value) budget.open = true;
+      },
+    );
     title.focus();
   }
 }
@@ -626,6 +906,7 @@ export class SubscriptionModal extends BaseModal {
       'number',
       t?.amount == null ? '' : String(t.amount),
     );
+    amount.dataset.field = 'amount';
     amount.min = '0';
     amount.max = '1000000000000';
     amount.step = 'any';
@@ -670,6 +951,11 @@ export class SubscriptionModal extends BaseModal {
     description.value = t?.description || '';
     description.rows = 5;
     description.maxLength = 100000;
+    const notes = el(form, 'details', 'tp-form-section');
+    notes.open = !!description.value;
+    el(notes, 'summary', '', w.description);
+    const notesBody = el(notes, 'div', 'tp-form-section-body');
+    notesBody.appendChild(description.closest('.tp-field')!);
     const actions = el(form, 'div', 'tp-modal-actions');
     button(actions, w.cancel, () => this.close());
     const save = el(actions, 'button', 'mod-cta', w.save);
@@ -696,6 +982,17 @@ export class SubscriptionModal extends BaseModal {
         save.disabled = false;
       });
     });
+    this.draft = keepFormDraft(
+      this.plugin,
+      form,
+      `form:subscription:${t?.path || 'new'}`,
+      t ? taskDraftBaseline(t) : '',
+      { title, amount, currency, period, date, project, active, description },
+      w,
+      () => {
+        if (description.value) notes.open = true;
+      },
+    );
     title.focus();
   }
 }
@@ -734,6 +1031,7 @@ export class ChargeModal extends BaseModal {
       'number',
       t.amount === null ? '' : String(t.amount),
     );
+    amount.dataset.field = 'amount';
     amount.required = true;
     amount.min = '0';
     amount.max = '1000000000000';

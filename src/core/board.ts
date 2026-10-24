@@ -21,6 +21,7 @@ export function boardItems(tasks: readonly Task[], today: string, scope: BoardSc
     if (task.kind === 'subscription') continue;
     const item = taskItem(task, today);
     const active = isActive(item.status);
+    if (scope === 'today' && item.status === 'failed' && item.date && item.date < today) continue;
     const record = item.recurring ? task.occurrences[item.key] : undefined;
     const resolved = item.recurring
       ? dateKey(record?.resolvedOn || record?.resolvedAt)

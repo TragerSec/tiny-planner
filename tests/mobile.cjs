@@ -50,6 +50,9 @@ const theme = require('./browser-theme.cjs');
     page.on('pageerror', (error) => errors.push(error.message));
     await page.goto('http://127.0.0.1:' + server.address().port);
     await page.waitForFunction(() => window.ready);
+    await page.evaluate(() => {
+      window.tp.view.calendarDisplayOpen = true;
+    });
     await page.evaluate(async () => {
       const area = await window.tp.plugin.service.createNote('area', 'Mobile area', {});
       const project = await window.tp.plugin.service.createNote(
@@ -67,7 +70,7 @@ const theme = require('./browser-theme.cjs');
               'Send invoice',
               'Team meeting',
               'Prepare demo',
-              'Back up vault and verify every archive, including the extremely long task title that must fit a uniform card',
+              'Back up vault and verify every archive, including the extremely long task title that must stay fully visible on its card',
             ][i],
           priority: i === 0 ? 'high' : i === 1 ? 'low' : 'normal',
           scheduled: '2026-10-02',
@@ -162,11 +165,27 @@ const theme = require('./browser-theme.cjs');
           const timedTitle = cell.locator('.tp-task-title[data-scheduled-time="14:30"]');
           assert.equal(await timedTitle.count(), 1);
           assert.equal(await timedTitle.isVisible(), true);
-          assert.equal(await timedTitle.evaluate((node) => getComputedStyle(node, '::before').content.includes('14:30')), true);
+          assert.equal(
+            await timedTitle.evaluate((node) =>
+              getComputedStyle(node, '::before').content.includes('14:30'),
+            ),
+            true,
+          );
           assert.equal(await cell.locator('.tp-task-meta .tp-appointment-time').count(), 0);
           assert.ok(
-            Math.max(...measured.cards) - Math.min(...measured.cards) < 1,
-            'Closed card heights must match',
+            await cell.locator('.tp-task-title').evaluateAll((ns) =>
+              ns.every((n) => {
+                const title = n.getBoundingClientRect();
+                const card = n.closest('.tp-task').getBoundingClientRect();
+                return (
+                  getComputedStyle(n).webkitLineClamp === 'none' &&
+                  n.scrollHeight <= n.clientHeight + 1 &&
+                  n.scrollWidth <= n.clientWidth + 1 &&
+                  title.bottom <= card.bottom + 1
+                );
+              }),
+            ),
+            'Minimal cards must show complete task titles within their bounds',
           );
           assert.ok(measured.geometry, JSON.stringify({ width, scale, mode, measured }));
           assert.equal(await cell.locator('.tp-task-meta').first().isVisible(), false);
@@ -174,8 +193,16 @@ const theme = require('./browser-theme.cjs');
           assert.equal(await mark.count(), 1);
           const markHeight = (await mark.boundingBox()).height;
           assert.ok(
-            Math.abs(markHeight - measured.cards[0]) < 1,
-            'Continuation height must match work cards',
+            await mark
+              .locator('.tp-continuation-title')
+              .evaluate(
+                (n) => n.scrollHeight <= n.clientHeight + 1 && n.scrollWidth <= n.clientWidth + 1,
+              ),
+            'Continuation titles must remain fully visible',
+          );
+          assert.ok(
+            markHeight >= (width <= 1100 ? 44 : 26),
+            'Continuation strips retain a usable tap target',
           );
           assert.equal(await mark.locator('.tp-check,[role=checkbox]').count(), 0);
           const continuationIndent = await mark.evaluate(
@@ -206,8 +233,8 @@ const theme = require('./browser-theme.cjs');
             JSON.stringify({ width, scale, mode, measured }),
           );
           assert.ok(
-            measured.cards.every((h) => h < (width <= 1100 ? 95 : 110)),
-            JSON.stringify({ width, scale, mode, measured }),
+            measured.cards.every((h) => h >= (width <= 1100 ? 44 : 26)),
+            'Cards retain their minimum usable size and grow to fit text',
           );
           assert.ok(
             await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
@@ -233,7 +260,7 @@ const theme = require('./browser-theme.cjs');
           );
           assert.ok(
             await page.locator('.tp-calendar-controls').evaluate((root) => {
-              const groups = [...root.children];
+              const groups = [...root.querySelectorAll('.tp-calendar-views')];
               const within = (n) => {
                 const r = n.getBoundingClientRect(),
                   p = root.getBoundingClientRect();
@@ -252,7 +279,7 @@ const theme = require('./browser-theme.cjs');
                 );
               });
             }),
-            'Toolbar groups must have equal button sizes and stay inside the pane',
+            'Period controls must have equal button sizes and stay inside the pane',
           );
           results.push({ width, scale, mode, ...measured });
         }
@@ -322,22 +349,37 @@ const theme = require('./browser-theme.cjs');
         assert.equal(await mark.getAttribute('data-status'), status);
         const look = await mark.evaluate((n) => ({
           color: getComputedStyle(n).color,
+          muted: getComputedStyle(document.querySelector('.tp-main'))
+            .getPropertyValue('--text-muted')
+            .trim(),
+          status: getComputedStyle(n).getPropertyValue('--tp-status-color').trim(),
           expected: getComputedStyle(n)
             .getPropertyValue('--tp-status-' + n.dataset.status)
             .trim(),
           line: getComputedStyle(n.querySelector('.tp-continuation-title')).textDecorationLine,
         }));
         assert.ok(look.expected, JSON.stringify(look));
+        assert.ok(look.status, JSON.stringify(look));
         assert.equal(
-          look.color,
+          look.status,
           await page
-            .locator('[data-day="2026-10-02"] .tp-task[data-status="' + status + '"] .tp-check')
+            .locator('[data-day="2026-10-02"] .tp-task[data-status="' + status + '"]')
             .first()
-            .evaluate((n) => getComputedStyle(n).color),
+            .evaluate((n) => getComputedStyle(n).getPropertyValue('--tp-status-color').trim()),
+        );
+        assert.equal(
+          await mark
+            .locator('.tp-continuation-title')
+            .evaluate((n) => getComputedStyle(n).fontWeight),
+          '400',
+        );
+        assert.notEqual(
+          await mark.evaluate((n) => getComputedStyle(n).borderInlineStartColor),
+          'rgba(0, 0, 0, 0)',
         );
         assert.equal(look.line.includes('line-through'), status === 'done' || status === 'failed');
       }
-      await page.locator('[data-calendar-appearance=detailed]').tap();
+      await page.locator('[data-calendar-details]').setChecked(true);
       assert.ok(
         await page.locator('.tp-calendar-grid .tp-task').evaluateAll((cards) =>
           cards.every((card) => {
@@ -383,7 +425,7 @@ const theme = require('./browser-theme.cjs');
       await page.locator('.tp-header h1').tap();
       assert.ok(await page.locator('.tp-card-menu').evaluateAll((ns) => ns.every((n) => n.open)));
       assert.ok(await page.locator('.tp-host').evaluate((n) => n.scrollWidth <= n.clientWidth + 1));
-      await page.locator('[data-calendar-appearance=minimal]').tap();
+      await page.locator('[data-calendar-details]').setChecked(false);
       assert.equal(await page.locator('.tp-card-menu[open]').count(), 0);
       const cards = page.locator('[data-day="2026-10-02"] .tp-task');
       const distance = await cards.evaluateAll(

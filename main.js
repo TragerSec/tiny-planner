@@ -141,7 +141,8 @@ function isActive(status) {
 var SCHEMA = 1;
 var TERMINAL = /* @__PURE__ */ new Set(["done", "failed"]);
 function scalarText(value, fallback = "") {
-  if (value instanceof Date) return Number.isFinite(value.valueOf()) ? value.toISOString() : fallback;
+  if (value instanceof Date)
+    return Number.isFinite(value.valueOf()) ? value.toISOString() : fallback;
   return typeof value === "string" || typeof value === "number" || typeof value === "boolean" || typeof value === "bigint" ? String(value) : fallback;
 }
 function normalizeStatus(value) {
@@ -3322,6 +3323,7 @@ function normalizeTask(path, fm) {
       if (dateKey(k) === k && v && typeof v === "object" && !Array.isArray(v)) {
         const r = v;
         occurrences[k] = {
+          ...typeof r.result === "string" ? { result: r.result } : {},
           status: normalizeStatus(r.status),
           minutes: safeMinutes(r.minutes),
           resolvedAt: r.resolvedAt ? scalarText(r.resolvedAt) : void 0,
@@ -3345,11 +3347,12 @@ function normalizeTask(path, fm) {
     }
   }
   const payment = fm.topPayment && typeof fm.topPayment === "object" ? fm.topPayment : void 0;
-  const kinds = ["task", "meeting", "payment", "status", "subscription"];
+  const kinds = ["task", "meeting", "contact", "payment", "status", "subscription"];
   return {
     path,
     title: title(fm, path),
     description: typeof fm.description === "string" ? fm.description : "",
+    result: typeof fm.result === "string" ? fm.result : "",
     status,
     kind: kinds.includes(kind) ? kind : "task",
     project: link(fm.project ?? fm.projects),
@@ -3408,6 +3411,7 @@ var Repository = class {
   constructor(app) {
     this.app = app;
   }
+  loaded = false;
   tasks = /* @__PURE__ */ new Map();
   projects = /* @__PURE__ */ new Map();
   areas = /* @__PURE__ */ new Map();
@@ -3493,6 +3497,7 @@ var Repository = class {
             String(result.reason instanceof Error ? result.reason.message : result.reason)
           );
     }
+    this.loaded = true;
     this.emit();
     if (errors.length) throw new Error(errors.join("\n"));
   }
@@ -3507,7 +3512,7 @@ var Repository = class {
     ]) : [path];
     for (const key of paths) {
       if (key !== path && !key.startsWith(path + "/")) continue;
-      this.revisions.set(key, (this.revisions.get(key) || 0) + 1);
+      this.revisions.delete(key);
       this.tasks.delete(key);
       this.projects.delete(key);
       this.areas.delete(key);
@@ -3516,37 +3521,41 @@ var Repository = class {
   }
   async refresh(file, emit = true) {
     const path = file.path;
-    const rev = (this.revisions.get(path) || 0) + 1;
+    const rev = Symbol();
     this.revisions.set(path, rev);
-    const text = await this.app.vault.read(file);
-    const header = text.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)?.[1] || "";
-    const had = this.tasks.has(path) || this.projects.has(path) || this.areas.has(path);
-    if (!header.includes("topSchema") && !had) return;
-    let fm;
     try {
-      fm = frontmatter(text);
-    } catch (error) {
+      const text = await this.app.vault.read(file);
+      const header = text.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)?.[1] || "";
+      const had = this.tasks.has(path) || this.projects.has(path) || this.areas.has(path);
+      if (!header.includes("topSchema") && !had) return;
+      let fm;
+      try {
+        fm = frontmatter(text);
+      } catch (error) {
+        if (this.revisions.get(path) !== rev) return;
+        this.remove(path, emit);
+        throw new Error(
+          `Invalid planner metadata: ${path}: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
       if (this.revisions.get(path) !== rev) return;
-      this.remove(path, emit);
-      throw new Error(
-        `Invalid planner metadata: ${path}: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-    if (this.revisions.get(path) !== rev) return;
-    this.cached = void 0;
-    this.tasks.delete(path);
-    this.projects.delete(path);
-    this.areas.delete(path);
-    if (fm.topSchema !== void 0 && Number(fm.topSchema) > 1) {
+      this.cached = void 0;
+      this.tasks.delete(path);
+      this.projects.delete(path);
+      this.areas.delete(path);
+      if (fm.topSchema !== void 0 && Number(fm.topSchema) > 1) {
+        if (emit) this.emit();
+        throw new Error(`Unsupported future planner schema: ${path}`);
+      }
+      if (Number(fm.topSchema) === 1) {
+        if (fm.type === "task") this.tasks.set(path, normalizeTask(path, fm));
+        if (fm.type === "project") this.projects.set(path, normalizeProject(path, fm));
+        if (fm.type === "area") this.areas.set(path, normalizeArea(path, fm));
+      }
       if (emit) this.emit();
-      throw new Error(`Unsupported future planner schema: ${path}`);
+    } finally {
+      if (this.revisions.get(path) === rev) this.revisions.delete(path);
     }
-    if (Number(fm.topSchema) === 1) {
-      if (fm.type === "task") this.tasks.set(path, normalizeTask(path, fm));
-      if (fm.type === "project") this.projects.set(path, normalizeProject(path, fm));
-      if (fm.type === "area") this.areas.set(path, normalizeArea(path, fm));
-    }
-    if (emit) this.emit();
   }
 };
 
@@ -3655,6 +3664,8 @@ ${body2 || "# " + name + "\n"}`
       throw new Error("Invalid status.");
     if (draft.description !== void 0 && (typeof draft.description !== "string" || draft.description.length > 1e5))
       throw new Error("Description must be at most 100000 characters.");
+    if (draft.result !== void 0 && (typeof draft.result !== "string" || draft.result.length > 1e5))
+      throw new Error("Result must be at most 100000 characters.");
     if (!draft.title.trim()) throw new Error("A title is required.");
     if (draft.scheduledTime !== void 0 && draft.scheduledTime !== "" && timeKey(draft.scheduledTime) !== draft.scheduledTime)
       throw new Error("Invalid appointment time. Use HH:mm from 00:00 to 23:59.");
@@ -3689,10 +3700,12 @@ ${body2 || "# " + name + "\n"}`
     return this.createNote("task", draft.title, {
       status: draft.recurrence ? "todo" : draft.status ?? "todo",
       description: draft.description ?? "",
+      ...!draft.recurrence && draft.result !== void 0 ? { result: draft.result } : {},
       ...!draft.recurrence && draft.status === "done" ? { completedDate: draft.kind === "payment" ? draft.paidOn || day() : day() } : !draft.recurrence && draft.status === "failed" ? { failedDate: day() } : {},
-      ...draft.recurrence && (draft.status && draft.status !== "todo" || draft.minutes > 0) ? {
+      ...draft.recurrence && (draft.status && draft.status !== "todo" || draft.minutes > 0 || !!draft.result) ? {
         topOccurrences: {
           [first]: {
+            ...draft.result !== void 0 ? { result: draft.result } : {},
             status: draft.status ?? "todo",
             minutes: Math.round(draft.minutes),
             ...isActive(draft.status ?? "todo") ? {} : {
@@ -3821,6 +3834,7 @@ ${body2 || "# " + name + "\n"}`
       Object.assign(fm, {
         title: draft.title.trim(),
         ...draft.description !== void 0 ? { description: draft.description } : {},
+        ...draft.result !== void 0 ? { result: draft.result } : {},
         project: draft.project ? `[[${draft.project}]]` : "",
         scheduled: draft.scheduled || null,
         ...draft.scheduledTime !== void 0 ? { scheduledTime: draft.scheduledTime || null } : {},
@@ -3872,7 +3886,7 @@ ${body2 || "# " + name + "\n"}`
       if (status === "failed") fm.failedDate = day();
     }
   }
-  async saveTask(item, draft, minutes, status) {
+  async saveTask(item, draft, minutes, status, checkConflicts = false) {
     if (item.task.kind === "subscription" || draft.kind === "subscription")
       throw new Error("Use subscription settings for expense trackers.");
     this.validate(draft);
@@ -3884,6 +3898,38 @@ ${body2 || "# " + name + "\n"}`
     await this.patchTask(item.task.path, (fm) => {
       if (String(fm.taskType ?? fm.kind).toLowerCase() === "subscription")
         throw new Error("Use subscription settings for expense trackers.");
+      if (checkConflicts) {
+        const live = normalizeTask(item.task.path, fm);
+        const canonicalProject = (path) => {
+          if (!path) return "";
+          const full = path.endsWith(".md") ? path : path + ".md";
+          if (this.repo.project(full)) return full;
+          return this.app.metadataCache.getFirstLinkpathDest(path, item.task.path)?.path || path;
+        };
+        const editable = (task) => ({
+          title: task.title,
+          description: task.description,
+          result: task.result || "",
+          project: canonicalProject(task.project),
+          kind: task.kind,
+          status: task.status,
+          scheduled: task.scheduled,
+          scheduledTime: task.scheduledTime || "",
+          due: task.due,
+          recurrence: task.recurrence,
+          plannedMinutes: task.plannedMinutes || 0,
+          workDates: task.workDates || [],
+          minutes: task.minutes,
+          priority: task.priority,
+          amount: task.amount,
+          currency: task.currency,
+          seriesEnd: task.seriesEnd,
+          occurrence: item.recurring ? task.occurrences[item.key] : void 0,
+          resolvedOn: task.resolvedOn
+        });
+        if (JSON.stringify(editable(live)) !== JSON.stringify(editable(item.task)))
+          throw new Error("Task was changed elsewhere. Reopen it and review your draft.");
+      }
       this.guardPaymentKind(fm, draft);
       Object.assign(fm, {
         title: draft.title.trim(),
@@ -3911,6 +3957,7 @@ ${body2 || "# " + name + "\n"}`
           records[key] = {
             ...records[key] || { status },
             minutes: Math.round(minutes),
+            ...draft.result !== void 0 ? { result: draft.result } : {},
             ...draft.kind === "payment" && status === "done" ? {
               amount: draft.amount !== void 0 ? draft.amount : item.task.amount,
               currency: draft.currency ?? item.task.currency,
@@ -3921,6 +3968,7 @@ ${body2 || "# " + name + "\n"}`
         }
       } else {
         fm.actualMinutes = Math.round(minutes);
+        if (draft.result !== void 0) fm.result = draft.result;
         if (status !== item.status || item.recurring)
           this.writeStatus(fm, { ...item, recurring: false }, status);
         if (draft.kind === "payment" && status === "done") {
@@ -4117,16 +4165,25 @@ var LegacyImporter = class {
     const result = { tasks: 0, projects: 0, areas: 0, warnings: [], skipped: 0 };
     const data = [];
     const imported = /* @__PURE__ */ new Map();
-    for (const file of this.app.vault.getMarkdownFiles()) {
-      const text = await this.app.vault.cachedRead(file);
-      const header = text.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)?.[1] || "";
-      if (!/^(Tasks|Projects)\//i.test(file.path) && !header.includes("topLegacySource")) continue;
-      const fm = frontmatter(text);
-      if (scalarText(fm.topLegacySource)) imported.set(scalarText(fm.topLegacySource), file.path);
-      if (fm.topSchema || !/^(Tasks|Projects)\//i.test(file.path)) continue;
-      const isProject = fm.type === "project" || file.basename === "_project";
-      const isTask = !isProject && (fm.type === "task" || strings(fm.tags).some((t) => t.replace(/^#/, "") === "task") || fm.status !== void 0);
-      if (isProject || isTask) data.push({ file, fm, text });
+    const files = this.app.vault.getMarkdownFiles();
+    for (let offset = 0; offset < files.length; offset += 24) {
+      const batch = await Promise.all(
+        files.slice(offset, offset + 24).map(async (file) => ({
+          file,
+          text: await this.app.vault.cachedRead(file)
+        }))
+      );
+      for (const { file, text } of batch) {
+        const header = text.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)?.[1] || "";
+        if (!/^(Tasks|Projects)\//i.test(file.path) && !header.includes("topLegacySource"))
+          continue;
+        const fm = frontmatter(text);
+        if (scalarText(fm.topLegacySource)) imported.set(scalarText(fm.topLegacySource), file.path);
+        if (fm.topSchema || !/^(Tasks|Projects)\//i.test(file.path)) continue;
+        const isProject = fm.type === "project" || file.basename === "_project";
+        const isTask = !isProject && (fm.type === "task" || strings(fm.tags).some((t) => t.replace(/^#/, "") === "task") || fm.status !== void 0);
+        if (isProject || isTask) data.push({ file, fm, text });
+      }
     }
     const areas = new Map(this.repo.snapshot().areas.map((a) => [a.title, a.path]));
     for (const entry of data.filter(
@@ -4309,13 +4366,23 @@ function todayItems(tasks, today, limits) {
     items.splice(low, 0, item);
     if (items.length > limit) items.pop();
   };
+  const closedToday = (item) => {
+    const resolved = item.recurring ? dateKey(
+      item.task.occurrences[item.key]?.resolvedOn || item.task.occurrences[item.key]?.resolvedAt
+    ) : item.task.resolvedOn;
+    return (resolved || item.date) === today && (item.status !== "failed" || !item.date || item.date >= today);
+  };
   for (const task of tasks) {
     if (task.kind === "subscription") continue;
     if (!task.recurrence) {
       const work = new Set([task.scheduled, ...task.workDates || []].filter(Boolean));
       const item = taskItem(task, today);
+      if (!isActive(item.status)) {
+        if (closedToday(item)) add("today", item);
+        continue;
+      }
       if (isOverdue(item, today)) add("overdue", item);
-      else if (work.has(today) || task.due === today || !isActive(task.status) && task.resolvedOn === today)
+      else if (work.has(today) || task.due === today)
         add("today", work.has(today) ? { ...item, date: today } : item);
       continue;
     }
@@ -4345,14 +4412,11 @@ function todayItems(tasks, today, limits) {
         });
       }
     }
-    if (!task.recurrence && !entries.length && !isActive(task.status) && task.resolvedOn === today)
-      entries.push(taskItem(task, today));
     for (const item of entries) {
-      if (isOverdue(item, today)) add("overdue", item);
-      else if (item.date <= today && item.end >= today || !isActive(item.status) && (item.recurring ? dateKey(
-        task.occurrences[item.key]?.resolvedOn || task.occurrences[item.key]?.resolvedAt
-      ) : task.resolvedOn) === today)
-        add("today", item);
+      if (!isActive(item.status)) {
+        if (closedToday(item)) add("today", item);
+      } else if (isOverdue(item, today)) add("overdue", item);
+      else if (item.date <= today && item.end >= today) add("today", item);
     }
   }
   return {
@@ -4495,6 +4559,36 @@ function taskItem(task, today) {
 }
 
 // src/core/calendar.ts
+function calendarLanes(tasks, dates) {
+  const weeks = [];
+  for (let offset = 0; offset < dates.length; offset += 7) {
+    const visible = dates.slice(offset, offset + 7);
+    const from = visible[0], to = visible.at(-1);
+    const intervals = tasks.filter(
+      (t) => !t.recurrence && t.kind !== "subscription" && t.scheduled && t.due > t.scheduled && t.scheduled <= to && t.due >= from
+    ).map((t) => ({
+      path: t.path,
+      from: t.scheduled < from ? from : t.scheduled,
+      to: t.due > to ? to : t.due
+    })).sort(
+      (a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to) || a.path.localeCompare(b.path)
+    );
+    const ends = [];
+    const lanes = /* @__PURE__ */ new Map();
+    let cursor = 0;
+    for (const date of visible) {
+      const free = ends.map((end, lane) => ({ end, lane })).filter((entry) => entry.end < date).map((entry) => entry.lane).reverse();
+      while (cursor < intervals.length && intervals[cursor].from === date) {
+        const interval = intervals[cursor++];
+        const lane = free.pop() ?? ends.length;
+        ends[lane] = interval.to;
+        lanes.set(interval.path, lane);
+      }
+    }
+    weeks.push({ dates: visible, lanes, count: ends.length });
+  }
+  return weeks;
+}
 function calendarDays(view, focus, month) {
   return view === "day" ? [focus] : view === "week" ? periodDates(calendarPeriod(focus, 7).from, 7) : monthGrid(month);
 }
@@ -4518,34 +4612,41 @@ function calendarItems(task, from, to) {
     calendarRole: work.includes(date) ? "work" : "deadline"
   }));
 }
-function dayLoad(tasks, date, capacity) {
-  let minutes = 0, unestimated = 0;
+function dayLoads(tasks, dates, capacity) {
+  const ordered = [...new Set(dates)].sort();
+  const loads = new Map(
+    ordered.map((date) => [date, { date, minutes: 0, unestimated: 0, capacity, over: false }])
+  );
+  if (!ordered.length) return loads;
+  const add = (date, estimate) => {
+    const load = loads.get(date);
+    if (!load) return;
+    if (!estimate) load.unestimated++;
+    else load.minutes += estimate;
+  };
   for (const task of tasks) {
     if (task.kind === "payment" || task.kind === "subscription") continue;
     if (task.recurrence) {
-      const active = calendarItems(task, date, date).filter((i) => isActive(i.status)).length;
-      if (!task.plannedMinutes) unestimated += active;
-      else minutes += task.plannedMinutes * active;
+      for (const item of calendarItems(task, ordered[0], ordered.at(-1)))
+        if (isActive(item.status)) add(item.date, task.plannedMinutes);
       continue;
     }
     if (!isActive(task.status)) continue;
-    const dates = workDays(task);
-    const planned = dates.includes(date) || !dates.length && task.due === date;
-    if (!planned) continue;
-    if (!task.plannedMinutes) unestimated++;
-    else {
-      const count = Math.max(1, dates.length);
-      const index = !dates.length ? 0 : dates.indexOf(date);
-      minutes += Math.floor(task.plannedMinutes / count) + (index < task.plannedMinutes % count ? 1 : 0);
+    const work = workDays(task);
+    const selected = work.length ? work : task.due ? [task.due] : [];
+    for (const [index, date] of selected.entries()) {
+      const load = loads.get(date);
+      if (!load) continue;
+      if (!task.plannedMinutes) load.unestimated++;
+      else
+        load.minutes += Math.floor(task.plannedMinutes / selected.length) + (index < task.plannedMinutes % selected.length ? 1 : 0);
     }
   }
-  return {
-    date,
-    minutes: Math.round(minutes),
-    unestimated,
-    capacity,
-    over: minutes > capacity
-  };
+  for (const load of loads.values()) {
+    load.minutes = Math.round(load.minutes);
+    load.over = load.minutes > capacity;
+  }
+  return loads;
 }
 function calendarContinuations(task, visibleDates) {
   if (task.recurrence || task.kind === "subscription" || !task.scheduled || !task.due || task.scheduled >= task.due)
@@ -4802,6 +4903,7 @@ function boardItems(tasks, today, scope) {
     if (task.kind === "subscription") continue;
     const item = taskItem(task, today);
     const active = isActive(item.status);
+    if (scope === "today" && item.status === "failed" && item.date && item.date < today) continue;
     const record = item.recurring ? task.occurrences[item.key] : void 0;
     const resolved = item.recurring ? dateKey(record?.resolvedOn || record?.resolvedAt) : task.resolvedOn;
     const date = active ? item.date : resolved || item.date;
@@ -4820,6 +4922,36 @@ var import_obsidian3 = require("obsidian");
 
 // src/ui/i18n.ts
 var en = {
+  contact: "Contact",
+  planningOptions: "Planning",
+  timeTracking: "Time tracking",
+  repeatOptions: "Repeat",
+  repeatBuilder: "Set schedule\u2026",
+  repeatEvery: "Every",
+  repeatFrequency: "Period",
+  repeatCount: "Number of repeats \xB7 optional",
+  repeatNext: "Next dates",
+  repeatDays: "Days of the week",
+  repeatDayLabels: "Mon,Tue,Wed,Thu,Fri,Sat,Sun",
+  workDates: "Additional work days",
+  addWorkDate: "Add work day",
+  workDistribution: "Planned time per day",
+  workDatesRepeat: "Additional work days are available for non-recurring tasks.",
+  invalidWorkDate: "Choose a unique work day on or before the deadline.",
+  emptyToday: "Nothing planned for today.",
+  emptyInbox: "Your inbox is empty.",
+  emptyProject: "No matching tasks in this project.",
+  emptyProjects: "No projects yet.",
+  emptyUpcoming: "Nothing planned for the next seven days.",
+  emptyFiltered: "No matches. Try changing the filters.",
+  draftRestored: "Draft restored.",
+  draftChanged: "The note changed. Review the saved draft before restoring it.",
+  restoreDraft: "Restore draft",
+  discardDraft: "Discard draft",
+  saveError: "Could not save. Your input is kept in this form.",
+  openToday: "Open today",
+  openCalendar: "Open calendar",
+  openInbox: "Open inbox",
   searchOptions: "Search options\u2026",
   noOptions: "No matching options",
   previousOptions: "Previous options",
@@ -4880,6 +5012,18 @@ var en = {
   taskActions: "Task actions",
   taskDetails: "Task details and actions",
   minimalView: "Minimal view",
+  calendarDisplay: "Display",
+  calendarShow: "Show tasks",
+  calendarCards: "Cards",
+  calendarCompleted: "Completed",
+  calendarFailed: "Failed",
+  calendarRecurring: "Recurring",
+  calendarDetails: "Task details",
+  calendarLimit: "Up to 3 entries per day (Month)",
+  monthOverview: "Month overview",
+  goToDate: "Go to date",
+  invalidCalendarDate: "Choose a valid calendar date.",
+  monthOverviewHelp: "Show three entries per day. Open the full day using Show more.",
   detailedView: "Detailed view",
   continues: "Continues",
   editSubscription: "Edit subscription",
@@ -4921,6 +5065,9 @@ var en = {
   "in-progress": "In progress",
   boardHelp: "One card per task. For recurring tasks, the card represents the earliest pending repeat, today\u2019s repeat or the next repeat. Changing status affects that repeat. An exhausted series remains read-only until its rule is changed. Done and Failed cards enter a dated board by their resolution day; if it was not recorded, their planned day is used. A later deadline does not keep closed work on Today. All keeps the full history.",
   description: "Description",
+  descriptionAndResult: "Description and result",
+  result: "Result",
+  resultHint: "What was done, the outcome or a link to the deliverable",
   dateFormat: "Date format",
   dateFormatHelp: "Applies to date entry and display. Stored dates remain compatible.",
   boardEmpty: "No tasks in this column",
@@ -5053,6 +5200,10 @@ var en = {
   complete: "Complete / reopen",
   fail: "Mark failed / reopen",
   editEntity: "Edit",
+  deleteProject: "Delete project",
+  deleteArea: "Delete area",
+  deleteEntityHelp: "Only this note is moved to trash. Linked projects and tasks are kept; Undo restores the note and its links.",
+  newTaskProject: "Project for the new task",
   edit: "Edit task",
   remove: "Delete",
   note: "Open note",
@@ -5112,6 +5263,36 @@ var en = {
   noOccurrence: "No remaining occurrence; edit the repeat rule to resume."
 };
 var ru = {
+  contact: "\u0421\u0432\u044F\u0437\u0430\u0442\u044C\u0441\u044F",
+  planningOptions: "\u041F\u043B\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435",
+  timeTracking: "\u0423\u0447\u0451\u0442 \u0432\u0440\u0435\u043C\u0435\u043D\u0438",
+  repeatOptions: "\u041F\u043E\u0432\u0442\u043E\u0440\u0435\u043D\u0438\u0435",
+  repeatBuilder: "\u041D\u0430\u0441\u0442\u0440\u043E\u0438\u0442\u044C \u0440\u0430\u0441\u043F\u0438\u0441\u0430\u043D\u0438\u0435\u2026",
+  repeatEvery: "\u041A\u0430\u0436\u0434\u044B\u0435",
+  repeatFrequency: "\u041F\u0435\u0440\u0438\u043E\u0434",
+  repeatCount: "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E \u043F\u043E\u0432\u0442\u043E\u0440\u043E\u0432 \xB7 \u043D\u0435\u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u043E",
+  repeatNext: "\u0411\u043B\u0438\u0436\u0430\u0439\u0448\u0438\u0435 \u0434\u0430\u0442\u044B",
+  repeatDays: "\u0414\u043D\u0438 \u043D\u0435\u0434\u0435\u043B\u0438",
+  repeatDayLabels: "\u041F\u043D,\u0412\u0442,\u0421\u0440,\u0427\u0442,\u041F\u0442,\u0421\u0431,\u0412\u0441",
+  workDates: "\u0414\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0435 \u0440\u0430\u0431\u043E\u0447\u0438\u0435 \u0434\u043D\u0438",
+  addWorkDate: "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0440\u0430\u0431\u043E\u0447\u0438\u0439 \u0434\u0435\u043D\u044C",
+  workDistribution: "\u041F\u043B\u0430\u043D\u043E\u0432\u043E\u0435 \u0432\u0440\u0435\u043C\u044F \u043F\u043E \u0434\u043D\u044F\u043C",
+  workDatesRepeat: "\u0414\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0435 \u0440\u0430\u0431\u043E\u0447\u0438\u0435 \u0434\u043D\u0438 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B \u0434\u043B\u044F \u0437\u0430\u0434\u0430\u0447 \u0431\u0435\u0437 \u043F\u043E\u0432\u0442\u043E\u0440\u0435\u043D\u0438\u044F.",
+  invalidWorkDate: "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0443\u043D\u0438\u043A\u0430\u043B\u044C\u043D\u044B\u0439 \u0440\u0430\u0431\u043E\u0447\u0438\u0439 \u0434\u0435\u043D\u044C \u043D\u0435 \u043F\u043E\u0437\u0436\u0435 \u0434\u0435\u0434\u043B\u0430\u0439\u043D\u0430.",
+  emptyToday: "\u041D\u0430 \u0441\u0435\u0433\u043E\u0434\u043D\u044F \u043D\u0438\u0447\u0435\u0433\u043E \u043D\u0435 \u0437\u0430\u043F\u043B\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u043E.",
+  emptyInbox: "\u0412\u043E \u0432\u0445\u043E\u0434\u044F\u0449\u0438\u0445 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u0437\u0430\u0434\u0430\u0447.",
+  emptyProject: "\u0412 \u044D\u0442\u043E\u043C \u043F\u0440\u043E\u0435\u043A\u0442\u0435 \u043D\u0435\u0442 \u043F\u043E\u0434\u0445\u043E\u0434\u044F\u0449\u0438\u0445 \u0437\u0430\u0434\u0430\u0447.",
+  emptyProjects: "\u041F\u0440\u043E\u0435\u043A\u0442\u043E\u0432 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442.",
+  emptyUpcoming: "\u041D\u0430 \u0431\u043B\u0438\u0436\u0430\u0439\u0448\u0438\u0435 \u0441\u0435\u043C\u044C \u0434\u043D\u0435\u0439 \u043D\u0438\u0447\u0435\u0433\u043E \u043D\u0435 \u0437\u0430\u043F\u043B\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u043E.",
+  emptyFiltered: "\u041D\u0438\u0447\u0435\u0433\u043E \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u0444\u0438\u043B\u044C\u0442\u0440\u044B.",
+  draftRestored: "\u0427\u0435\u0440\u043D\u043E\u0432\u0438\u043A \u0432\u043E\u0441\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D.",
+  draftChanged: "\u0417\u0430\u043C\u0435\u0442\u043A\u0430 \u0438\u0437\u043C\u0435\u043D\u0438\u043B\u0430\u0441\u044C. \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A \u043F\u0435\u0440\u0435\u0434 \u0432\u043E\u0441\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u0435\u043C.",
+  restoreDraft: "\u0412\u043E\u0441\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u044C \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A",
+  discardDraft: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A",
+  saveError: "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C. \u0412\u0432\u0435\u0434\u0451\u043D\u043D\u044B\u0435 \u0434\u0430\u043D\u043D\u044B\u0435 \u043E\u0441\u0442\u0430\u043B\u0438\u0441\u044C \u0432 \u0444\u043E\u0440\u043C\u0435.",
+  openToday: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0441\u0435\u0433\u043E\u0434\u043D\u044F",
+  openCalendar: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u043A\u0430\u043B\u0435\u043D\u0434\u0430\u0440\u044C",
+  openInbox: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0432\u0445\u043E\u0434\u044F\u0449\u0438\u0435",
   searchOptions: "\u041F\u043E\u0438\u0441\u043A \u0432\u0430\u0440\u0438\u0430\u043D\u0442\u043E\u0432\u2026",
   noOptions: "\u041D\u0435\u0442 \u043F\u043E\u0434\u0445\u043E\u0434\u044F\u0449\u0438\u0445 \u0432\u0430\u0440\u0438\u0430\u043D\u0442\u043E\u0432",
   previousOptions: "\u041F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0438\u0435 \u0432\u0430\u0440\u0438\u0430\u043D\u0442\u044B",
@@ -5172,6 +5353,18 @@ var ru = {
   taskActions: "\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u0441 \u0437\u0430\u0434\u0430\u0447\u0435\u0439",
   taskDetails: "\u041F\u043E\u0434\u0440\u043E\u0431\u043D\u043E\u0441\u0442\u0438 \u0438 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F",
   minimalView: "\u041C\u0438\u043D\u0438\u043C\u0430\u043B\u0438\u0441\u0442\u0438\u0447\u043D\u044B\u0439 \u0432\u0438\u0434",
+  calendarDisplay: "\u041E\u0442\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435",
+  calendarShow: "\u041F\u043E\u043A\u0430\u0437\u044B\u0432\u0430\u0442\u044C \u0437\u0430\u0434\u0430\u0447\u0438",
+  calendarCards: "\u041A\u0430\u0440\u0442\u043E\u0447\u043A\u0438",
+  calendarCompleted: "\u0412\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043D\u044B\u0435",
+  calendarFailed: "\u041F\u0440\u043E\u0432\u0430\u043B\u0435\u043D\u043D\u044B\u0435",
+  calendarRecurring: "\u041F\u043E\u0432\u0442\u043E\u0440\u044F\u044E\u0449\u0438\u0435\u0441\u044F",
+  calendarDetails: "\u041F\u043E\u0434\u0440\u043E\u0431\u043D\u043E\u0441\u0442\u0438 \u0437\u0430\u0434\u0430\u0447",
+  calendarLimit: "\u0414\u043E 3 \u0437\u0430\u043F\u0438\u0441\u0435\u0439 \u043D\u0430 \u0434\u0435\u043D\u044C (\u043C\u0435\u0441\u044F\u0446)",
+  monthOverview: "\u041E\u0431\u0437\u043E\u0440 \u043C\u0435\u0441\u044F\u0446\u0430",
+  goToDate: "\u041F\u0435\u0440\u0435\u0439\u0442\u0438 \u043A \u0434\u0430\u0442\u0435",
+  invalidCalendarDate: "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u044E\u0449\u0443\u044E \u0434\u0430\u0442\u0443.",
+  monthOverviewHelp: "\u0422\u0440\u0438 \u0437\u0430\u043F\u0438\u0441\u0438 \u043D\u0430 \u0434\u0435\u043D\u044C. \u041A\u043D\u043E\u043F\u043A\u0430 \xAB\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0435\u0449\u0451\xBB \u043E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u0434\u0435\u043D\u044C \u0446\u0435\u043B\u0438\u043A\u043E\u043C.",
   detailedView: "\u041F\u043E\u0434\u0440\u043E\u0431\u043D\u044B\u0439 \u0432\u0438\u0434",
   continues: "\u041F\u0440\u043E\u0434\u043E\u043B\u0436\u0430\u0435\u0442\u0441\u044F",
   editSubscription: "\u0420\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0443",
@@ -5213,6 +5406,9 @@ var ru = {
   "in-progress": "\u0412 \u0440\u0430\u0431\u043E\u0442\u0435",
   boardHelp: "\u041E\u0434\u043D\u0430 \u043A\u0430\u0440\u0442\u043E\u0447\u043A\u0430 \u043D\u0430 \u0437\u0430\u0434\u0430\u0447\u0443. \u0423 \u043F\u043E\u0432\u0442\u043E\u0440\u044F\u044E\u0449\u0438\u0445\u0441\u044F \u0437\u0430\u0434\u0430\u0447 \u043F\u043E\u043A\u0430\u0437\u0430\u043D \u0441\u0430\u043C\u044B\u0439 \u0440\u0430\u043D\u043D\u0438\u0439 \u043D\u0435\u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043D\u043D\u044B\u0439 \u043F\u043E\u0432\u0442\u043E\u0440, \u043F\u043E\u0432\u0442\u043E\u0440 \u043D\u0430 \u0441\u0435\u0433\u043E\u0434\u043D\u044F \u0438\u043B\u0438 \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439. \u0421\u0442\u0430\u0442\u0443\u0441 \u043C\u0435\u043D\u044F\u0435\u0442\u0441\u044F \u0434\u043B\u044F \u044D\u0442\u043E\u0433\u043E \u043F\u043E\u0432\u0442\u043E\u0440\u0430. \u0418\u0441\u0447\u0435\u0440\u043F\u0430\u043D\u043D\u0430\u044F \u0441\u0435\u0440\u0438\u044F \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430 \u0442\u043E\u043B\u044C\u043A\u043E \u0434\u043B\u044F \u0447\u0442\u0435\u043D\u0438\u044F \u0434\u043E \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F \u043F\u0440\u0430\u0432\u0438\u043B\u0430. \u0412\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043D\u044B\u0435 \u0438 \u043F\u0440\u043E\u0432\u0430\u043B\u0435\u043D\u043D\u044B\u0435 \u0434\u0435\u043B\u0430 \u043F\u043E\u043F\u0430\u0434\u0430\u044E\u0442 \u043D\u0430 \u0434\u043E\u0441\u043A\u0443 \u043F\u0435\u0440\u0438\u043E\u0434\u0430 \u043F\u043E \u0434\u0430\u0442\u0435 \u0437\u0430\u043A\u0440\u044B\u0442\u0438\u044F; \u0435\u0441\u043B\u0438 \u043E\u043D\u0430 \u043D\u0435 \u0437\u0430\u043F\u0438\u0441\u0430\u043D\u0430 \u2014 \u043F\u043E \u043F\u043B\u0430\u043D\u043E\u0432\u043E\u0439 \u0434\u0430\u0442\u0435. \u0411\u043E\u043B\u0435\u0435 \u043F\u043E\u0437\u0434\u043D\u0438\u0439 \u0434\u0435\u0434\u043B\u0430\u0439\u043D \u043D\u0435 \u043E\u0441\u0442\u0430\u0432\u043B\u044F\u0435\u0442 \u0437\u0430\u043A\u0440\u044B\u0442\u043E\u0435 \u0434\u0435\u043B\u043E \u043D\u0430 \xAB\u0421\u0435\u0433\u043E\u0434\u043D\u044F\xBB. \u0412 \xAB\u0412\u0441\u0435\xBB \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u0442\u0441\u044F \u0432\u0441\u044F \u0438\u0441\u0442\u043E\u0440\u0438\u044F.",
   description: "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435",
+  descriptionAndResult: "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435 \u0438 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442",
+  result: "\u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442",
+  resultHint: "\u0427\u0442\u043E \u0441\u0434\u0435\u043B\u0430\u043D\u043E, \u0447\u0435\u043C \u0437\u0430\u043A\u043E\u043D\u0447\u0438\u043B\u043E\u0441\u044C \u0438\u043B\u0438 \u0441\u0441\u044B\u043B\u043A\u0430 \u043D\u0430 \u0438\u0442\u043E\u0433",
   dateFormat: "\u0424\u043E\u0440\u043C\u0430\u0442 \u0434\u0430\u0442\u044B",
   dateFormatHelp: "\u0418\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0435\u0442\u0441\u044F \u043F\u0440\u0438 \u0432\u0432\u043E\u0434\u0435 \u0438 \u043E\u0442\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0438. \u0412 \u0437\u0430\u043C\u0435\u0442\u043A\u0430\u0445 \u0434\u0430\u0442\u044B \u043E\u0441\u0442\u0430\u044E\u0442\u0441\u044F \u0432 \u0444\u043E\u0440\u043C\u0430\u0442\u0435 ISO.",
   boardEmpty: "\u0412 \u044D\u0442\u043E\u0439 \u043A\u043E\u043B\u043E\u043D\u043A\u0435 \u043D\u0435\u0442 \u0437\u0430\u0434\u0430\u0447",
@@ -5345,6 +5541,10 @@ var ru = {
   complete: "\u0417\u0430\u0432\u0435\u0440\u0448\u0438\u0442\u044C / \u043F\u0435\u0440\u0435\u043E\u0442\u043A\u0440\u044B\u0442\u044C",
   fail: "\u041E\u0442\u043C\u0435\u0442\u0438\u0442\u044C \u043D\u0435\u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u0435 / \u043F\u0435\u0440\u0435\u043E\u0442\u043A\u0440\u044B\u0442\u044C",
   editEntity: "\u0420\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C",
+  deleteProject: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u043F\u0440\u043E\u0435\u043A\u0442",
+  deleteArea: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0441\u0444\u0435\u0440\u0443",
+  deleteEntityHelp: "\u0412 \u043A\u043E\u0440\u0437\u0438\u043D\u0443 \u043F\u0435\u0440\u0435\u043C\u0435\u0441\u0442\u0438\u0442\u0441\u044F \u0442\u043E\u043B\u044C\u043A\u043E \u044D\u0442\u0430 \u0437\u0430\u043C\u0435\u0442\u043A\u0430. \u0421\u0432\u044F\u0437\u0430\u043D\u043D\u044B\u0435 \u043F\u0440\u043E\u0435\u043A\u0442\u044B \u0438 \u0437\u0430\u0434\u0430\u0447\u0438 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0442\u0441\u044F; \xAB\u041E\u0442\u043C\u0435\u043D\u0438\u0442\u044C \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435\xBB \u0432\u043E\u0441\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442 \u0437\u0430\u043C\u0435\u0442\u043A\u0443 \u0438 \u0441\u0432\u044F\u0437\u0438.",
+  newTaskProject: "\u041F\u0440\u043E\u0435\u043A\u0442 \u043D\u043E\u0432\u043E\u0439 \u0437\u0430\u0434\u0430\u0447\u0438",
   edit: "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u0437\u0430\u0434\u0430\u0447\u0443",
   remove: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C",
   note: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0437\u0430\u043C\u0435\u0442\u043A\u0443",
@@ -5426,6 +5626,7 @@ var russianErrors = {
   "Minutes must be zero or greater.": "\u0417\u0430\u0442\u0440\u0430\u0447\u0435\u043D\u043D\u044B\u0435 \u043C\u0438\u043D\u0443\u0442\u044B \u0434\u043E\u043B\u0436\u043D\u044B \u0431\u044B\u0442\u044C \u043D\u0435\u043E\u0442\u0440\u0438\u0446\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u043C \u0447\u0438\u0441\u043B\u043E\u043C.",
   "Description must be at most 100000 characters.": "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435 \u043D\u0435 \u0434\u043E\u043B\u0436\u043D\u043E \u043F\u0440\u0435\u0432\u044B\u0448\u0430\u0442\u044C 100 000 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432.",
   "Description is too long.": "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435 \u043D\u0435 \u0434\u043E\u043B\u0436\u043D\u043E \u043F\u0440\u0435\u0432\u044B\u0448\u0430\u0442\u044C 100 000 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432.",
+  "Result must be at most 100000 characters.": "\u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 \u043D\u0435 \u0434\u043E\u043B\u0436\u0435\u043D \u043F\u0440\u0435\u0432\u044B\u0448\u0430\u0442\u044C 100 000 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432.",
   "Cannot edit a future planner schema.": "\u041D\u0435\u043B\u044C\u0437\u044F \u0438\u0437\u043C\u0435\u043D\u044F\u0442\u044C \u0437\u0430\u043C\u0435\u0442\u043A\u0443 \u0441 \u0431\u043E\u043B\u0435\u0435 \u043D\u043E\u0432\u043E\u0439 \u0432\u0435\u0440\u0441\u0438\u0435\u0439 \u0441\u0445\u0435\u043C\u044B \u043F\u043B\u0430\u043D\u0438\u0440\u043E\u0432\u0449\u0438\u043A\u0430.",
   "This note is no longer a supported planner note.": "\u0417\u0430\u043C\u0435\u0442\u043A\u0430 \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435 \u044F\u0432\u043B\u044F\u0435\u0442\u0441\u044F \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u043C\u043E\u0439 \u0437\u0430\u043C\u0435\u0442\u043A\u043E\u0439 \u043F\u043B\u0430\u043D\u0438\u0440\u043E\u0432\u0449\u0438\u043A\u0430.",
   "This note is no longer a task.": "\u0417\u0430\u043C\u0435\u0442\u043A\u0430 \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435 \u044F\u0432\u043B\u044F\u0435\u0442\u0441\u044F \u0437\u0430\u0434\u0430\u0447\u0435\u0439.",
@@ -5435,6 +5636,7 @@ var russianErrors = {
   "Use a three-letter currency code.": "\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u0442\u0440\u0451\u0445\u0431\u0443\u043A\u0432\u0435\u043D\u043D\u044B\u0439 \u043A\u043E\u0434 \u0432\u0430\u043B\u044E\u0442\u044B, \u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440 RUB.",
   "Invalid billing period.": "\u041D\u0435\u0434\u043E\u043F\u0443\u0441\u0442\u0438\u043C\u044B\u0439 \u043F\u0435\u0440\u0438\u043E\u0434 \u043E\u043F\u043B\u0430\u0442\u044B.",
   "This note is not a subscription.": "\u042D\u0442\u0430 \u0437\u0430\u043C\u0435\u0442\u043A\u0430 \u043D\u0435 \u044F\u0432\u043B\u044F\u0435\u0442\u0441\u044F \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u043E\u0439.",
+  "Task was changed elsewhere. Reopen it and review your draft.": "\u0417\u0430\u0434\u0430\u0447\u0430 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0430 \u0432\u043D\u0435 \u0444\u043E\u0440\u043C\u044B. \u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u0435\u0451 \u0437\u0430\u043D\u043E\u0432\u043E \u0438 \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A.",
   "Subscription was changed elsewhere. Reopen it and repeat your changes.": "\u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0430 \u0432\u043D\u0435 \u0444\u043E\u0440\u043C\u044B. \u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u0435\u0451 \u0437\u0430\u043D\u043E\u0432\u043E \u0438 \u043F\u043E\u0432\u0442\u043E\u0440\u0438\u0442\u0435 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F.",
   "This note is no longer a subscription.": "\u042D\u0442\u0430 \u0437\u0430\u043C\u0435\u0442\u043A\u0430 \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435 \u044F\u0432\u043B\u044F\u0435\u0442\u0441\u044F \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u043E\u0439.",
   "Use subscription settings for expense trackers.": "\u0418\u0437\u043C\u0435\u043D\u044F\u0439\u0442\u0435 \u0440\u0430\u0441\u0445\u043E\u0434\u044B \u0432 \u0444\u043E\u0440\u043C\u0435 \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0438.",
@@ -5553,11 +5755,15 @@ function enhanceSelect(native) {
   search.placeholder = w.searchOptions;
   search.setAttribute("aria-label", w.searchOptions);
   search.autocomplete = "off";
+  search.setAttribute("role", "combobox");
+  search.setAttribute("aria-autocomplete", "list");
+  search.setAttribute("aria-expanded", "false");
   const list = panel.createDiv({ cls: "tp-select-options" });
   list.id = `tp-select-${nextId++}`;
   list.setAttribute("role", "listbox");
   list.tabIndex = -1;
   trigger.setAttribute("aria-controls", list.id);
+  search.setAttribute("aria-controls", list.id);
   const pager = panel.createDiv({ cls: "tp-select-pager" });
   const previous = pager.createEl("button", { text: "\u2039" });
   previous.type = "button";
@@ -5569,6 +5775,7 @@ function enhanceSelect(native) {
   next.setAttribute("aria-label", w.nextOptions);
   let active = 0;
   let matches = [];
+  let matchQuery;
   let controller;
   let detached;
   const preferredPageSize = native.closest(".tp-picker-popup") ? 5 : 8;
@@ -5586,6 +5793,8 @@ function enhanceSelect(native) {
     sized?.disconnect();
     sized = void 0;
     trigger.setAttribute("aria-expanded", "false");
+    search.setAttribute("aria-expanded", "false");
+    search.removeAttribute("aria-activedescendant");
     controller?.abort();
     controller = void 0;
     detached?.disconnect();
@@ -5633,18 +5842,23 @@ function enhanceSelect(native) {
   };
   const draw = () => {
     const query = search.value.trim().toLocaleLowerCase();
-    matches = [...native.options].filter(
-      (o) => !o.hidden && !o.disabled && (!query || o.text.toLocaleLowerCase().includes(query))
-    );
+    if (matchQuery !== query) {
+      matches = [...native.options].filter(
+        (o) => !o.hidden && !o.disabled && (!query || o.text.toLocaleLowerCase().includes(query))
+      );
+      matchQuery = query;
+    }
     active = Math.min(Math.max(0, active), Math.max(0, matches.length - 1));
     const page = Math.floor(active / pageSize);
     list.replaceChildren();
     if (!matches.length) list.createDiv({ cls: "tp-select-empty", text: w.noOptions });
-    for (const option of matches.slice(page * pageSize, (page + 1) * pageSize)) {
-      const index = matches.indexOf(option);
+    for (const [offset, option] of matches.slice(page * pageSize, (page + 1) * pageSize).entries()) {
+      const index = page * pageSize + offset;
       const node = list.createDiv({ cls: "tp-select-option", text: option.text });
       node.id = `${list.id}-${index}`;
       node.setAttribute("role", "option");
+      node.setAttribute("aria-posinset", String(index + 1));
+      node.setAttribute("aria-setsize", String(matches.length));
       node.setAttribute("aria-selected", String(option.value === native.value));
       node.classList.toggle("tp-option-active", index === active);
       node.addEventListener("pointerdown", (e) => e.preventDefault());
@@ -5653,8 +5867,10 @@ function enhanceSelect(native) {
         choose(option);
       });
     }
-    if (matches.length) list.setAttribute("aria-activedescendant", `${list.id}-${active}`);
-    else list.removeAttribute("aria-activedescendant");
+    for (const owner of [list, search]) {
+      if (matches.length) owner.setAttribute("aria-activedescendant", `${list.id}-${active}`);
+      else owner.removeAttribute("aria-activedescendant");
+    }
     pager.hidden = matches.length <= pageSize;
     previous.disabled = page === 0;
     next.disabled = (page + 1) * pageSize >= matches.length;
@@ -5665,6 +5881,7 @@ function enhanceSelect(native) {
     place();
   };
   const sync = () => {
+    matchQuery = void 0;
     text.textContent = native.selectedOptions[0]?.text || "";
     trigger.disabled = native.disabled;
     if (native.disabled && !panel.hidden) close();
@@ -5681,6 +5898,7 @@ function enhanceSelect(native) {
     openMenus.get(doc)?.();
     openMenus.set(doc, dismiss);
     search.value = "";
+    matchQuery = void 0;
     pageSize = preferredPageSize;
     search.hidden = native.options.length <= pageSize;
     active = Math.max(
@@ -5690,6 +5908,7 @@ function enhanceSelect(native) {
     panel.hidden = false;
     panel.showPopover?.();
     trigger.setAttribute("aria-expanded", "true");
+    search.setAttribute("aria-expanded", "true");
     render();
     controller = new win.AbortController();
     win.addEventListener("resize", resize, { signal: controller.signal });
@@ -5780,7 +5999,7 @@ function enhanceSelect(native) {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ["disabled", "label", "selected", "aria-label", "title", "value"]
+    attributeFilter: ["disabled", "hidden", "label", "selected", "aria-label", "title", "value"]
   });
   sync();
 }
@@ -6933,47 +7152,50 @@ function manual(parent, language, author, version) {
   };
   section(t("Area \u2192 project \u2192 task", "\u0421\u0444\u0435\u0440\u0430 \u2192 \u043F\u0440\u043E\u0435\u043A\u0442 \u2192 \u0437\u0430\u0434\u0430\u0447\u0430"), [
     t(
-      "An area is an ongoing part of life, such as Home or Work. A project groups work toward an outcome, such as Moving home. A task is a specific action. Tasks without a project appear in Inbox. Changing a project status does not change its tasks.",
-      "\u0421\u0444\u0435\u0440\u0430 \u2014 \u0447\u0430\u0441\u0442\u044C \u0436\u0438\u0437\u043D\u0438, \u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440 \xAB\u0414\u043E\u043C\xBB \u0438\u043B\u0438 \xAB\u0420\u0430\u0431\u043E\u0442\u0430\xBB. \u041F\u0440\u043E\u0435\u043A\u0442 \u043E\u0431\u044A\u0435\u0434\u0438\u043D\u044F\u0435\u0442 \u0434\u0435\u043B\u0430 \u0440\u0430\u0434\u0438 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u0430, \u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440 \xAB\u041F\u0435\u0440\u0435\u0435\u0437\u0434\xBB. \u0417\u0430\u0434\u0430\u0447\u0430 \u2014 \u043A\u043E\u043D\u043A\u0440\u0435\u0442\u043D\u043E\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435. \u0417\u0430\u0434\u0430\u0447\u0438 \u0431\u0435\u0437 \u043F\u0440\u043E\u0435\u043A\u0442\u0430 \u043F\u043E\u043F\u0430\u0434\u0430\u044E\u0442 \u0432\u043E \xAB\u0412\u0445\u043E\u0434\u044F\u0449\u0438\u0435\xBB. \u0421\u043C\u0435\u043D\u0430 \u0441\u0442\u0430\u0442\u0443\u0441\u0430 \u043F\u0440\u043E\u0435\u043A\u0442\u0430 \u043D\u0435 \u043C\u0435\u043D\u044F\u0435\u0442 \u0441\u0442\u0430\u0442\u0443\u0441\u044B \u0435\u0433\u043E \u0437\u0430\u0434\u0430\u0447."
+      "Areas group projects; projects group tasks. Tasks without a recognized project appear in Inbox. Create a task with just a title and add details later.",
+      "\u0421\u0444\u0435\u0440\u044B \u043E\u0431\u044A\u0435\u0434\u0438\u043D\u044F\u044E\u0442 \u043F\u0440\u043E\u0435\u043A\u0442\u044B, \u043F\u0440\u043E\u0435\u043A\u0442\u044B \u2014 \u0437\u0430\u0434\u0430\u0447\u0438. \u0417\u0430\u0434\u0430\u0447\u0438 \u0431\u0435\u0437 \u0440\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u043D\u043D\u043E\u0433\u043E \u043F\u0440\u043E\u0435\u043A\u0442\u0430 \u043F\u043E\u043F\u0430\u0434\u0430\u044E\u0442 \u0432\u043E \xAB\u0412\u0445\u043E\u0434\u044F\u0449\u0438\u0435\xBB. \u0414\u043B\u044F \u0441\u043E\u0437\u0434\u0430\u043D\u0438\u044F \u0437\u0430\u0434\u0430\u0447\u0438 \u0434\u043E\u0441\u0442\u0430\u0442\u043E\u0447\u043D\u043E \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u044F; \u043E\u0441\u0442\u0430\u043B\u044C\u043D\u043E\u0435 \u043C\u043E\u0436\u043D\u043E \u0434\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043F\u043E\u0437\u0436\u0435."
+    )
+  ]);
+  section(t("Filters, deletion and closed work", "\u0424\u0438\u043B\u044C\u0442\u0440\u044B, \u0443\u0434\u0430\u043B\u0435\u043D\u0438\u0435 \u0438 \u0437\u0430\u043A\u0440\u044B\u0442\u044B\u0435 \u0437\u0430\u0434\u0430\u0447\u0438"), [
+    t(
+      "Filters beside search narrow the displayed list by area or project. Remove a filter label or clear all filters. The project field in quick entry assigns the new task; it does not filter the list.",
+      "\xAB\u0424\u0438\u043B\u044C\u0442\u0440\u044B\xBB \u0440\u044F\u0434\u043E\u043C \u0441 \u043F\u043E\u0438\u0441\u043A\u043E\u043C \u043E\u0442\u0431\u0438\u0440\u0430\u044E\u0442 \u0437\u0430\u043F\u0438\u0441\u0438 \u043F\u043E \u0441\u0444\u0435\u0440\u0435 \u0438 \u043F\u0440\u043E\u0435\u043A\u0442\u0443. \u0421\u043D\u0438\u043C\u0438\u0442\u0435 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u0443\u044E \u043C\u0435\u0442\u043A\u0443 \u0438\u043B\u0438 \u0441\u0431\u0440\u043E\u0441\u044C\u0442\u0435 \u043E\u0442\u0431\u043E\u0440. \u041F\u0440\u043E\u0435\u043A\u0442 \u0432 \u0441\u0442\u0440\u043E\u043A\u0435 \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u0438\u044F \u043D\u0430\u0437\u043D\u0430\u0447\u0430\u0435\u0442\u0441\u044F \u043D\u043E\u0432\u043E\u0439 \u0437\u0430\u0434\u0430\u0447\u0435 \u0438 \u043D\u0435 \u0444\u0438\u043B\u044C\u0442\u0440\u0443\u0435\u0442 \u0441\u043F\u0438\u0441\u043E\u043A."
+    ),
+    t(
+      "Deleting an area or project preserves linked notes. Undo restores the deleted note and its links. Failed overdue work stays in history rather than returning to Today.",
+      "\u0423\u0434\u0430\u043B\u0435\u043D\u0438\u0435 \u0441\u0444\u0435\u0440\u044B \u0438\u043B\u0438 \u043F\u0440\u043E\u0435\u043A\u0442\u0430 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u0442 \u0441\u0432\u044F\u0437\u0430\u043D\u043D\u044B\u0435 \u0437\u0430\u043C\u0435\u0442\u043A\u0438. \u041E\u0442\u043C\u0435\u043D\u0430 \u0432\u043E\u0441\u0441\u0442\u0430\u043D\u0430\u0432\u043B\u0438\u0432\u0430\u0435\u0442 \u0443\u0434\u0430\u043B\u0451\u043D\u043D\u0443\u044E \u0437\u0430\u043C\u0435\u0442\u043A\u0443 \u0438 \u0441\u0432\u044F\u0437\u0438. \u041F\u0440\u043E\u0441\u0440\u043E\u0447\u0435\u043D\u043D\u044B\u0435 \u0437\u0430\u0434\u0430\u0447\u0438 \u0441\u043E \u0441\u0442\u0430\u0442\u0443\u0441\u043E\u043C \xAB\u041D\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043E\xBB \u043E\u0441\u0442\u0430\u044E\u0442\u0441\u044F \u0432 \u0438\u0441\u0442\u043E\u0440\u0438\u0438 \u0438 \u043D\u0435 \u0432\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u044E\u0442\u0441\u044F \u0432 \xAB\u0421\u0435\u0433\u043E\u0434\u043D\u044F\xBB."
     )
   ]);
   section(t("Capture, dates and time", "\u0414\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u0438\u0435 \u0437\u0430\u0434\u0430\u0447, \u0434\u0430\u0442\u044B \u0438 \u0432\u0440\u0435\u043C\u044F"), [
     t(
-      "The panel button at the top of the left menu collapses or expands navigation. When collapsed, the same chevron moves to the page header and the content uses the full width. It remains available in every section, including Guide. The choice lasts while this planner view is open. Enter a title and date in quick entry and press Enter or +. Options reveals project, time and status. The sliders button opens the full form. Click a task title to edit it. A document icon beside the task title indicates a description; hover it for a tooltip. The calendar button beside each date lets you choose a day, month and year, use today or clear the field. Typed dates may omit separators: 07102026 in DD.MM.YYYY means 07.10.2026. Settings choose the date order; ISO dates can be pasted in any mode.",
-      "\u041A\u043D\u043E\u043F\u043A\u0430 \u0432\u0432\u0435\u0440\u0445\u0443 \u043B\u0435\u0432\u043E\u0433\u043E \u043C\u0435\u043D\u044E \u0441\u0432\u043E\u0440\u0430\u0447\u0438\u0432\u0430\u0435\u0442 \u0438 \u0440\u0430\u0441\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u0435\u0433\u043E. \u0412 \u0441\u0432\u0451\u0440\u043D\u0443\u0442\u043E\u043C \u0441\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u0438 \u0442\u0430 \u0436\u0435 \u043A\u043D\u043E\u043F\u043A\u0430 \u043F\u0435\u0440\u0435\u043C\u0435\u0449\u0430\u0435\u0442\u0441\u044F \u0432 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u044B, \u0430 \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435 \u0437\u0430\u043D\u0438\u043C\u0430\u0435\u0442 \u0432\u0441\u044E \u0448\u0438\u0440\u0438\u043D\u0443. \u041E\u043D\u0430 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430 \u0432 \u043A\u0430\u0436\u0434\u043E\u043C \u0440\u0430\u0437\u0434\u0435\u043B\u0435, \u0432\u043A\u043B\u044E\u0447\u0430\u044F \u0438\u043D\u0441\u0442\u0440\u0443\u043A\u0446\u0438\u044E. \u0412\u044B\u0431\u043E\u0440 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u0442\u0441\u044F, \u043F\u043E\u043A\u0430 \u043E\u0442\u043A\u0440\u044B\u0442\u0430 \u044D\u0442\u0430 \u0432\u043A\u043B\u0430\u0434\u043A\u0430 \u043F\u043B\u0430\u043D\u043D\u0435\u0440\u0430. \u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0438 \u0434\u0430\u0442\u0443 \u0432 \u0441\u0442\u0440\u043E\u043A\u0443 \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u0438\u044F \u0438 \u043D\u0430\u0436\u043C\u0438\u0442\u0435 Enter \u0438\u043B\u0438 +. \xAB\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B\xBB \u0440\u0430\u0441\u043A\u0440\u044B\u0432\u0430\u044E\u0442 \u043F\u0440\u043E\u0435\u043A\u0442, \u0432\u0440\u0435\u043C\u044F \u0438 \u0441\u0442\u0430\u0442\u0443\u0441. \u041A\u043D\u043E\u043F\u043A\u0430 \u0441 \u043F\u043E\u043B\u0437\u0443\u043D\u043A\u0430\u043C\u0438 \u043E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u043F\u043E\u043B\u043D\u0443\u044E \u0444\u043E\u0440\u043C\u0443. \u041D\u0430\u0436\u043C\u0438\u0442\u0435 \u043D\u0430 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0437\u0430\u0434\u0430\u0447\u0438, \u0447\u0442\u043E\u0431\u044B \u043E\u0442\u043A\u0440\u044B\u0442\u044C \u0444\u043E\u0440\u043C\u0443. \u0417\u043D\u0430\u0447\u043E\u043A \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430 \u0440\u044F\u0434\u043E\u043C \u0441 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435\u043C \u043E\u0442\u043C\u0435\u0447\u0430\u0435\u0442 \u043D\u0430\u043B\u0438\u0447\u0438\u0435 \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u044F; \u043F\u0440\u0438 \u043D\u0430\u0432\u0435\u0434\u0435\u043D\u0438\u0438 \u043F\u043E\u044F\u0432\u043B\u044F\u0435\u0442\u0441\u044F \u043F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0430. \u0417\u043D\u0430\u0447\u043E\u043A \u043A\u0430\u043B\u0435\u043D\u0434\u0430\u0440\u044F \u0440\u044F\u0434\u043E\u043C \u0441 \u0434\u0430\u0442\u043E\u0439 \u043F\u043E\u0437\u0432\u043E\u043B\u044F\u0435\u0442 \u0432\u044B\u0431\u0440\u0430\u0442\u044C \u0434\u0435\u043D\u044C, \u043C\u0435\u0441\u044F\u0446 \u0438 \u0433\u043E\u0434, \u043F\u0435\u0440\u0435\u0439\u0442\u0438 \u043A \u0441\u0435\u0433\u043E\u0434\u043D\u044F\u0448\u043D\u0435\u043C\u0443 \u0434\u043D\u044E \u0438\u043B\u0438 \u043E\u0447\u0438\u0441\u0442\u0438\u0442\u044C \u043F\u043E\u043B\u0435. \u0414\u0430\u0442\u0443 \u043C\u043E\u0436\u043D\u043E \u0432\u0432\u043E\u0434\u0438\u0442\u044C \u0431\u0435\u0437 \u0440\u0430\u0437\u0434\u0435\u043B\u0438\u0442\u0435\u043B\u0435\u0439: 07102026 \u0432 \u0444\u043E\u0440\u043C\u0430\u0442\u0435 \u0414\u0414.\u041C\u041C.\u0413\u0413\u0413\u0413 \u043E\u0437\u043D\u0430\u0447\u0430\u0435\u0442 07.10.2026. \u0424\u043E\u0440\u043C\u0430\u0442 \u043C\u0435\u043D\u044F\u0435\u0442\u0441\u044F \u0432 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430\u0445; \u0434\u0430\u0442\u044B ISO \u043C\u043E\u0436\u043D\u043E \u0432\u0441\u0442\u0430\u0432\u043B\u044F\u0442\u044C \u043F\u0440\u0438 \u043B\u044E\u0431\u043E\u043C \u0444\u043E\u0440\u043C\u0430\u0442\u0435."
+      "Enter a title and press Enter or +. Options reveals quick-entry fields; the sliders button opens the full form. Click a task title to edit it. Contact means writing or calling someone.",
+      "\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0438 \u043D\u0430\u0436\u043C\u0438\u0442\u0435 Enter \u0438\u043B\u0438 +. \xAB\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B\xBB \u0440\u0430\u0441\u043A\u0440\u044B\u0432\u0430\u044E\u0442 \u0434\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0435 \u043F\u043E\u043B\u044F, \u043A\u043D\u043E\u043F\u043A\u0430 \u0441 \u043F\u043E\u043B\u0437\u0443\u043D\u043A\u0430\u043C\u0438 \u043E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u043F\u043E\u043B\u043D\u0443\u044E \u0444\u043E\u0440\u043C\u0443. \u041D\u0430\u0436\u043C\u0438\u0442\u0435 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0434\u043B\u044F \u0440\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u044F. \u0422\u0438\u043F \xAB\u0421\u0432\u044F\u0437\u0430\u0442\u044C\u0441\u044F\xBB \u2014 \u043D\u0430\u043F\u0438\u0441\u0430\u0442\u044C \u0438\u043B\u0438 \u043F\u043E\u0437\u0432\u043E\u043D\u0438\u0442\u044C \u0447\u0435\u043B\u043E\u0432\u0435\u043A\u0443."
     ),
-    w.appointmentHelp,
     t(
-      "Calendar cells put Done first, then Failed, then unfinished tasks; each group is ordered by time. Other day lists put timed tasks earliest first, followed by untimed tasks. Series time applies to all repeats and survives moves. A red ! marks high priority with a gentle pulse; a white down arrow marks low priority; closed tasks and reduced motion keep a static badge. Overdue tasks are red and labelled Overdue. Payment uses a $ marker, Meeting uses a people icon and Status uses a flag. The type marker and the high-priority ! can appear together. Calendar cards have equal closed heights and show the checkbox, assigned time before the title when provided, up to two title lines and uniform icons. Assigned time remains visible in Minimal view and on continuation marks. The vertical ellipsis reveals the full title, area/project, estimates and actions. Minimal view collapses these details; Detailed view expands every task. The choice stays with the open planner view across Day, Week and Month. Subtle intermediate-day marks connect start and deadline without checkboxes or workload and follow the task status, including green strikethrough for completed work. Calendar cards stay compact and all remain visible; only the whole planner page scrolls. Narrow panes use a readable dated agenda.",
-      "\u0412 \u043A\u0430\u043B\u0435\u043D\u0434\u0430\u0440\u0435 \u0441\u043D\u0430\u0447\u0430\u043B\u0430 \u0438\u0434\u0443\u0442 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043D\u044B\u0435 \u0437\u0430\u0434\u0430\u0447\u0438, \u0437\u0430\u0442\u0435\u043C \u043D\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043D\u044B\u0435 \u0438 \u043E\u0442\u043A\u0440\u044B\u0442\u044B\u0435; \u0432\u043D\u0443\u0442\u0440\u0438 \u0433\u0440\u0443\u043F\u043F\u044B \u043E\u043D\u0438 \u0443\u043F\u043E\u0440\u044F\u0434\u043E\u0447\u0435\u043D\u044B \u043F\u043E \u0432\u0440\u0435\u043C\u0435\u043D\u0438. \u0412 \u043E\u0441\u0442\u0430\u043B\u044C\u043D\u044B\u0445 \u0441\u043F\u0438\u0441\u043A\u0430\u0445 \u0434\u043D\u044F \u0441\u043D\u0430\u0447\u0430\u043B\u0430 \u0438\u0434\u0443\u0442 \u0437\u0430\u0434\u0430\u0447\u0438 \u0441\u043E \u0432\u0440\u0435\u043C\u0435\u043D\u0435\u043C, \u0437\u0430\u0442\u0435\u043C \u0431\u0435\u0437 \u043D\u0435\u0433\u043E. \u0412\u0440\u0435\u043C\u044F \u0441\u0435\u0440\u0438\u0438 \u043E\u0442\u043D\u043E\u0441\u0438\u0442\u0441\u044F \u043A\u043E \u0432\u0441\u0435\u043C \u043F\u043E\u0432\u0442\u043E\u0440\u0430\u043C \u0438 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u0442\u0441\u044F \u043F\u0440\u0438 \u043F\u0435\u0440\u0435\u043D\u043E\u0441\u0435. \u041A\u0440\u0430\u0441\u043D\u044B\u0439 \u0437\u043D\u0430\u0447\u043E\u043A ! \u043E\u0442\u043C\u0435\u0447\u0430\u0435\u0442 \u0432\u044B\u0441\u043E\u043A\u0438\u0439 \u043F\u0440\u0438\u043E\u0440\u0438\u0442\u0435\u0442, \u0431\u0435\u043B\u0430\u044F \u0441\u0442\u0440\u0435\u043B\u043A\u0430 \u0432\u043D\u0438\u0437 \u2014 \u043D\u0438\u0437\u043A\u0438\u0439. \u041C\u0430\u0440\u043A\u0435\u0440 \u0432\u044B\u0441\u043E\u043A\u043E\u0433\u043E \u043F\u0440\u0438\u043E\u0440\u0438\u0442\u0435\u0442\u0430 \u043C\u044F\u0433\u043A\u043E \u043F\u0443\u043B\u044C\u0441\u0438\u0440\u0443\u0435\u0442; \u0443 \u0437\u0430\u043A\u0440\u044B\u0442\u044B\u0445 \u0437\u0430\u0434\u0430\u0447 \u0438 \u043F\u0440\u0438 \u043E\u0442\u043A\u043B\u044E\u0447\u0451\u043D\u043D\u043E\u0439 \u0430\u043D\u0438\u043C\u0430\u0446\u0438\u0438 \u043E\u0441\u0442\u0430\u0451\u0442\u0441\u044F \u043D\u0435\u043F\u043E\u0434\u0432\u0438\u0436\u043D\u044B\u043C. \u041F\u0440\u043E\u0441\u0440\u043E\u0447\u0435\u043D\u043D\u044B\u0435 \u0437\u0430\u0434\u0430\u0447\u0438 \u0432\u044B\u0434\u0435\u043B\u0435\u043D\u044B \u043A\u0440\u0430\u0441\u043D\u044B\u043C \u0438 \u043F\u043E\u0434\u043F\u0438\u0441\u0430\u043D\u044B \xAB\u041F\u0440\u043E\u0441\u0440\u043E\u0447\u0435\u043D\u043E\xBB. \u0412 \u043A\u0430\u043B\u0435\u043D\u0434\u0430\u0440\u0435 \u0437\u0430\u043A\u0440\u044B\u0442\u044B\u0435 \u043A\u0430\u0440\u0442\u043E\u0447\u043A\u0438 \u0438\u043C\u0435\u044E\u0442 \u043E\u0434\u0438\u043D\u0430\u043A\u043E\u0432\u0443\u044E \u0432\u044B\u0441\u043E\u0442\u0443: \u0447\u0435\u043A\u0431\u043E\u043A\u0441, \u0443\u043A\u0430\u0437\u0430\u043D\u043D\u043E\u0435 \u0432\u0440\u0435\u043C\u044F \u043F\u0435\u0440\u0435\u0434 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435\u043C, \u0434\u043E \u0434\u0432\u0443\u0445 \u0441\u0442\u0440\u043E\u043A \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u044F \u0438 \u0437\u043D\u0430\u0447\u043A\u0438 \u043E\u0434\u043D\u043E\u0433\u043E \u0440\u0430\u0437\u043C\u0435\u0440\u0430. \u0412\u0440\u0435\u043C\u044F \u0432\u0438\u0434\u043D\u043E \u0438 \u0432 \u043C\u0438\u043D\u0438\u043C\u0430\u043B\u0438\u0441\u0442\u0438\u0447\u043D\u043E\u043C \u0432\u0438\u0434\u0435, \u0438 \u043D\u0430 \u043F\u0440\u043E\u043C\u0435\u0436\u0443\u0442\u043E\u0447\u043D\u044B\u0445 \u043E\u0442\u043C\u0435\u0442\u043A\u0430\u0445. \u0412\u0435\u0440\u0442\u0438\u043A\u0430\u043B\u044C\u043D\u043E\u0435 \u043C\u043D\u043E\u0433\u043E\u0442\u043E\u0447\u0438\u0435 \u0440\u0430\u0441\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u043F\u043E\u043B\u043D\u043E\u0435 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435, \u0441\u0444\u0435\u0440\u0443, \u043F\u0440\u043E\u0435\u043A\u0442, \u043E\u0446\u0435\u043D\u043A\u0443 \u0434\u043B\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u0441\u0442\u0438 \u0438 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F. \xAB\u041C\u0438\u043D\u0438\u043C\u0430\u043B\u0438\u0441\u0442\u0438\u0447\u043D\u044B\u0439 \u0432\u0438\u0434\xBB \u0441\u0432\u043E\u0440\u0430\u0447\u0438\u0432\u0430\u0435\u0442 \u043F\u043E\u0434\u0440\u043E\u0431\u043D\u043E\u0441\u0442\u0438, \xAB\u041F\u043E\u0434\u0440\u043E\u0431\u043D\u044B\u0439 \u0432\u0438\u0434\xBB \u0440\u0430\u0441\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u0432\u0441\u0435 \u0437\u0430\u0434\u0430\u0447\u0438. \u0412\u044B\u0431\u043E\u0440 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u0442\u0441\u044F \u0432 \u043E\u0442\u043A\u0440\u044B\u0442\u043E\u0439 \u0432\u043A\u043B\u0430\u0434\u043A\u0435 \u0434\u043B\u044F \u0434\u043D\u044F, \u043D\u0435\u0434\u0435\u043B\u0438 \u0438 \u043C\u0435\u0441\u044F\u0446\u0430. \u041F\u0440\u0438\u0433\u043B\u0443\u0448\u0451\u043D\u043D\u044B\u0435 \u043E\u0442\u043C\u0435\u0442\u043A\u0438 \u043C\u0435\u0436\u0434\u0443 \u0441\u0442\u0430\u0440\u0442\u043E\u043C \u0438 \u0434\u0435\u0434\u043B\u0430\u0439\u043D\u043E\u043C \u043D\u0435 \u0438\u043C\u0435\u044E\u0442 \u0447\u0435\u043A\u0431\u043E\u043A\u0441\u043E\u0432 \u0438 \u043D\u0435 \u0443\u0432\u0435\u043B\u0438\u0447\u0438\u0432\u0430\u044E\u0442 \u043D\u0430\u0433\u0440\u0443\u0437\u043A\u0443. \u041E\u043D\u0438 \u043D\u0430\u0441\u043B\u0435\u0434\u0443\u044E\u0442 \u0441\u0442\u0430\u0442\u0443\u0441 \u0437\u0430\u0434\u0430\u0447\u0438: \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043D\u044B\u0435 \u0437\u0435\u043B\u0451\u043D\u044B\u0435 \u0438 \u0437\u0430\u0447\u0451\u0440\u043A\u043D\u0443\u0442\u044B\u0435. \u041A\u0430\u0440\u0442\u043E\u0447\u043A\u0438 \u043E\u0441\u0442\u0430\u044E\u0442\u0441\u044F \u043A\u043E\u043C\u043F\u0430\u043A\u0442\u043D\u044B\u043C\u0438 \u0438 \u0432\u0438\u0434\u0438\u043C\u044B\u043C\u0438 \u0446\u0435\u043B\u0438\u043A\u043E\u043C; \u043F\u0440\u043E\u043A\u0440\u0443\u0447\u0438\u0432\u0430\u0435\u0442\u0441\u044F \u0442\u043E\u043B\u044C\u043A\u043E \u0432\u0441\u044F \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0430 \u043F\u043B\u0430\u043D\u0438\u0440\u043E\u0432\u0449\u0438\u043A\u0430. \u0412 \u0443\u0437\u043A\u043E\u043C \u043E\u043A\u043D\u0435 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0435\u0442\u0441\u044F \u0447\u0438\u0442\u0430\u0435\u043C\u044B\u0439 \u0441\u043F\u0438\u0441\u043E\u043A \u0434\u0430\u0442. \u041F\u043B\u0430\u0442\u0451\u0436 \u043E\u0442\u043C\u0435\u0447\u0435\u043D \u0437\u043D\u0430\u043A\u043E\u043C $, \u0432\u0441\u0442\u0440\u0435\u0447\u0430 \u2014 \u0437\u043D\u0430\u0447\u043A\u043E\u043C \u043B\u044E\u0434\u0435\u0439, \u0441\u0442\u0430\u0442\u0443\u0441 \u2014 \u0444\u043B\u0430\u0436\u043A\u043E\u043C. \u041C\u0430\u0440\u043A\u0435\u0440 \u0442\u0438\u043F\u0430 \u0438 \u0432\u043E\u0441\u043A\u043B\u0438\u0446\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u0439 \u0437\u043D\u0430\u043A \u0432\u044B\u0441\u043E\u043A\u043E\u0433\u043E \u043F\u0440\u0438\u043E\u0440\u0438\u0442\u0435\u0442\u0430 \u043C\u043E\u0433\u0443\u0442 \u043E\u0442\u043E\u0431\u0440\u0430\u0436\u0430\u0442\u044C\u0441\u044F \u0432\u043C\u0435\u0441\u0442\u0435."
-    ),
-    w.manual
+      "Description holds the brief; Result records the outcome. Both support multiline text. Optional sections open when needed, and up to 20 recent form drafts can be recovered. Date format and language are in settings; task time is optional.",
+      "\xAB\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435\xBB \u2014 \u0432\u0432\u043E\u0434\u043D\u044B\u0435, \xAB\u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\xBB \u2014 \u0438\u0442\u043E\u0433. \u041E\u0431\u0430 \u043F\u043E\u043B\u044F \u043C\u043D\u043E\u0433\u043E\u0441\u0442\u0440\u043E\u0447\u043D\u044B\u0435. \u0414\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0435 \u0441\u0435\u043A\u0446\u0438\u0438 \u0440\u0430\u0441\u043A\u0440\u044B\u0432\u0430\u044E\u0442\u0441\u044F \u043F\u043E \u043D\u0435\u043E\u0431\u0445\u043E\u0434\u0438\u043C\u043E\u0441\u0442\u0438; \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u0442\u0441\u044F \u0434\u043E 20 \u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0438\u0445 \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A\u043E\u0432 \u0444\u043E\u0440\u043C. \u042F\u0437\u044B\u043A \u0438 \u0444\u043E\u0440\u043C\u0430\u0442 \u0434\u0430\u0442 \u043C\u0435\u043D\u044F\u044E\u0442\u0441\u044F \u0432 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430\u0445; \u0432\u0440\u0435\u043C\u044F \u0437\u0430\u0434\u0430\u0447\u0438 \u043D\u0435\u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u043E."
+    )
   ]);
   section(t("Statuses and Undo", "\u0421\u0442\u0430\u0442\u0443\u0441\u044B \u0438 \u043E\u0442\u043C\u0435\u043D\u0430 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0439"), [
     t(
-      "Backlog holds deferred work; To do is planned work; In progress is started work; Done and Failed are closed. The checkbox completes or reopens a task, the cross marks failure and the trash button deletes it. Undo reverses up to 50 changes in the current session; creation and import are excluded. Restarting clears Undo history. Undo preserves conflicting external edits.",
-      "\xAB\u041E\u0442\u043B\u043E\u0436\u0435\u043D\u043E\xBB \u2014 \u0434\u0435\u043B\u0430 \u043D\u0430 \u043F\u043E\u0442\u043E\u043C, \xAB\u041A \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044E\xBB \u2014 \u0437\u0430\u043F\u043B\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0435, \xAB\u0412 \u0440\u0430\u0431\u043E\u0442\u0435\xBB \u2014 \u043D\u0430\u0447\u0430\u0442\u044B\u0435. \xAB\u0412\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043E\xBB \u0438 \xAB\u041D\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043E\xBB \u2014 \u0437\u0430\u043A\u0440\u044B\u0442\u044B\u0435 \u0437\u0430\u0434\u0430\u0447\u0438. \u0413\u0430\u043B\u043E\u0447\u043A\u0430 \u0437\u0430\u0432\u0435\u0440\u0448\u0430\u0435\u0442 \u0438\u043B\u0438 \u043F\u0435\u0440\u0435\u043E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u0437\u0430\u0434\u0430\u0447\u0443, \u043A\u0440\u0435\u0441\u0442\u0438\u043A \u043E\u0442\u043C\u0435\u0447\u0430\u0435\u0442 \u043D\u0435\u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u0435, \u043A\u043E\u0440\u0437\u0438\u043D\u0430 \u0443\u0434\u0430\u043B\u044F\u0435\u0442. \u041E\u0442\u043C\u0435\u043D\u0430 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430 \u0434\u043B\u044F \u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0438\u0445 50 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0439 \u0432 \u0442\u0435\u043A\u0443\u0449\u0435\u0439 \u0441\u0435\u0441\u0441\u0438\u0438, \u043A\u0440\u043E\u043C\u0435 \u0441\u043E\u0437\u0434\u0430\u043D\u0438\u044F \u0438 \u0438\u043C\u043F\u043E\u0440\u0442\u0430. \u041F\u043E\u0441\u043B\u0435 \u043F\u0435\u0440\u0435\u0437\u0430\u043F\u0443\u0441\u043A\u0430 \u0438\u0441\u0442\u043E\u0440\u0438\u044F \u043E\u0442\u043C\u0435\u043D\u044B \u043E\u0447\u0438\u0449\u0430\u0435\u0442\u0441\u044F. \u041F\u0440\u0438 \u043A\u043E\u043D\u0444\u043B\u0438\u043A\u0442\u0435 \u043E\u0442\u043C\u0435\u043D\u0430 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u0442 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F, \u0441\u0434\u0435\u043B\u0430\u043D\u043D\u044B\u0435 \u0432\u043D\u0435 \u043F\u043B\u0430\u043D\u043D\u0435\u0440\u0430."
+      "Backlog, To do and In progress are open work; Done and Failed are closed. Click the check to complete or reopen. Undo retains 50 changes in the current session, except creation and import, and refuses conflicting external edits.",
+      "\xAB\u041E\u0442\u043B\u043E\u0436\u0435\u043D\u043E\xBB, \xAB\u041A \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044E\xBB \u0438 \xAB\u0412 \u0440\u0430\u0431\u043E\u0442\u0435\xBB \u2014 \u043E\u0442\u043A\u0440\u044B\u0442\u044B\u0435 \u0437\u0430\u0434\u0430\u0447\u0438; \xAB\u0412\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043E\xBB \u0438 \xAB\u041D\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043E\xBB \u2014 \u0437\u0430\u043A\u0440\u044B\u0442\u044B\u0435. \u0413\u0430\u043B\u043E\u0447\u043A\u0430 \u0437\u0430\u0432\u0435\u0440\u0448\u0430\u0435\u0442 \u0438\u043B\u0438 \u043F\u0435\u0440\u0435\u043E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u0437\u0430\u0434\u0430\u0447\u0443. \u041E\u0442\u043C\u0435\u043D\u0430 \u0445\u0440\u0430\u043D\u0438\u0442 50 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0439 \u0442\u0435\u043A\u0443\u0449\u0435\u0439 \u0441\u0435\u0441\u0441\u0438\u0438, \u043A\u0440\u043E\u043C\u0435 \u0441\u043E\u0437\u0434\u0430\u043D\u0438\u044F \u0438 \u0438\u043C\u043F\u043E\u0440\u0442\u0430, \u0438 \u0437\u0430\u0449\u0438\u0449\u0430\u0435\u0442 \u0432\u043D\u0435\u0448\u043D\u0438\u0435 \u043F\u0440\u0430\u0432\u043A\u0438."
     )
   ]);
   section(t("Repeats and series end", "\u041F\u043E\u0432\u0442\u043E\u0440\u044B \u0438 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u0435 \u0441\u0435\u0440\u0438\u0438"), [
     t(
-      "Daily, weekly, weekday, monthly, yearly and custom RRULE repeats are available. Date anchors the series; Repeat through is its inclusive last day, and an empty end leaves it open-ended. A weekday series anchored on a weekend starts on Monday. The form and save confirmation show its first repeat. A range with no matching dates cannot be saved.",
-      "\u0414\u043E\u0441\u0442\u0443\u043F\u043D\u044B \u043F\u043E\u0432\u0442\u043E\u0440\u044B \u043A\u0430\u0436\u0434\u044B\u0439 \u0434\u0435\u043D\u044C, \u043D\u0435\u0434\u0435\u043B\u044E, \u043F\u043E \u0431\u0443\u0434\u043D\u044F\u043C, \u043C\u0435\u0441\u044F\u0446, \u0433\u043E\u0434 \u0438 \u0441\u043E\u0431\u0441\u0442\u0432\u0435\u043D\u043D\u043E\u0435 \u043F\u0440\u0430\u0432\u0438\u043B\u043E RRULE. \u041D\u0430\u0447\u0430\u043B\u044C\u043D\u0430\u044F \u0434\u0430\u0442\u0430 \u0437\u0430\u0434\u0430\u0451\u0442 \u043E\u0442\u0441\u0447\u0451\u0442 \u0441\u0435\u0440\u0438\u0438; \xAB\u041F\u043E\u0432\u0442\u043E\u0440\u044F\u0442\u044C \u043F\u043E\xBB \u0432\u043A\u043B\u044E\u0447\u0430\u0435\u0442 \u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0438\u0439 \u0434\u0435\u043D\u044C, \u0430 \u043F\u0443\u0441\u0442\u043E\u0435 \u043F\u043E\u043B\u0435 \u043E\u0441\u0442\u0430\u0432\u043B\u044F\u0435\u0442 \u0441\u0435\u0440\u0438\u044E \u0431\u0435\u0437 \u043A\u043E\u043D\u0446\u0430. \u0415\u0441\u043B\u0438 \u043F\u043E\u0432\u0442\u043E\u0440 \u043F\u043E \u0431\u0443\u0434\u043D\u044F\u043C \u043D\u0430\u0447\u0438\u043D\u0430\u0435\u0442\u0441\u044F \u0432 \u0432\u044B\u0445\u043E\u0434\u043D\u043E\u0439, \u043F\u0435\u0440\u0432\u044B\u0439 \u0434\u0435\u043D\u044C \u0431\u0443\u0434\u0435\u0442 \u0432 \u043F\u043E\u043D\u0435\u0434\u0435\u043B\u044C\u043D\u0438\u043A. \u041F\u0435\u0440\u0432\u044B\u0439 \u043F\u043E\u0432\u0442\u043E\u0440 \u0432\u0438\u0434\u0435\u043D \u0432 \u0444\u043E\u0440\u043C\u0435 \u0438 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u0438 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u044F. \u0414\u0438\u0430\u043F\u0430\u0437\u043E\u043D \u0431\u0435\u0437 \u043F\u043E\u0434\u0445\u043E\u0434\u044F\u0449\u0438\u0445 \u0434\u0430\u0442 \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u043D\u0435\u043B\u044C\u0437\u044F."
+      "Choose a repeat preset or configure intervals, weekdays and a count; preview dates before saving. Advanced RRULE is also available. Repeat through includes its last day. Status, result, spent time and moves belong to each occurrence separately.",
+      "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0433\u043E\u0442\u043E\u0432\u044B\u0439 \u043F\u043E\u0432\u0442\u043E\u0440 \u0438\u043B\u0438 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u0442\u0435 \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B, \u0434\u043D\u0438 \u043D\u0435\u0434\u0435\u043B\u0438 \u0438 \u043A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E; \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0431\u043B\u0438\u0436\u0430\u0439\u0448\u0438\u0435 \u0434\u0430\u0442\u044B \u043F\u0435\u0440\u0435\u0434 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u0435\u043C. \u0414\u043E\u0441\u0442\u0443\u043F\u043D\u043E \u0438 \u043F\u0440\u0430\u0432\u0438\u043B\u043E RRULE. \xAB\u041F\u043E\u0432\u0442\u043E\u0440\u044F\u0442\u044C \u043F\u043E\xBB \u0432\u043A\u043B\u044E\u0447\u0430\u0435\u0442 \u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0438\u0439 \u0434\u0435\u043D\u044C. \u0421\u0442\u0430\u0442\u0443\u0441, \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442, \u0437\u0430\u0442\u0440\u0430\u0447\u0435\u043D\u043D\u043E\u0435 \u0432\u0440\u0435\u043C\u044F \u0438 \u043F\u0435\u0440\u0435\u043D\u043E\u0441\u044B \u0443 \u043A\u0430\u0436\u0434\u043E\u0433\u043E \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u044B\u0435."
     ),
-    w.seriesHint,
     t(
-      "Completion, spent minutes, skip and move apply to the selected occurrence. Tomorrow remains independent. Deletion can target one day or the whole series. Stopping removes future generation while retaining recorded history; resuming restores the series. Monthly repeats on the 31st skip months without that day. A rule exceeding calculation limits shows a warning; simplify it or shorten its range.",
-      "\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u0435, \u043C\u0438\u043D\u0443\u0442\u044B, \u043F\u0440\u043E\u043F\u0443\u0441\u043A \u0438 \u043F\u0435\u0440\u0435\u043D\u043E\u0441 \u043E\u0442\u043D\u043E\u0441\u044F\u0442\u0441\u044F \u043A \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u043E\u043C\u0443 \u043F\u043E\u0432\u0442\u043E\u0440\u0443. \u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 \u0434\u0435\u043D\u044C \u043E\u0441\u0442\u0430\u0451\u0442\u0441\u044F \u043D\u0435\u0437\u0430\u0432\u0438\u0441\u0438\u043C\u044B\u043C. \u041C\u043E\u0436\u043D\u043E \u0443\u0434\u0430\u043B\u0438\u0442\u044C \u043E\u0434\u0438\u043D \u043F\u043E\u0432\u0442\u043E\u0440 \u0438\u043B\u0438 \u0432\u0441\u044E \u0441\u0435\u0440\u0438\u044E. \u041E\u0441\u0442\u0430\u043D\u043E\u0432\u043A\u0430 \u0443\u0431\u0438\u0440\u0430\u0435\u0442 \u0431\u0443\u0434\u0443\u0449\u0438\u0435 \u043F\u043E\u0432\u0442\u043E\u0440\u044B, \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u044F \u0438\u0441\u0442\u043E\u0440\u0438\u044E; \u0432\u043E\u0437\u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u0435 \u0432\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442 \u0441\u0435\u0440\u0438\u044E. \u0415\u0436\u0435\u043C\u0435\u0441\u044F\u0447\u043D\u044B\u0435 \u043F\u043E\u0432\u0442\u043E\u0440\u044B \u043D\u0430 31-\u0435 \u043F\u0440\u043E\u043F\u0443\u0441\u043A\u0430\u044E\u0442 \u043C\u0435\u0441\u044F\u0446\u044B \u0431\u0435\u0437 \u044D\u0442\u043E\u0433\u043E \u0434\u043D\u044F. \u0415\u0441\u043B\u0438 \u043F\u0440\u0430\u0432\u0438\u043B\u043E \u043F\u0440\u0435\u0432\u044B\u0448\u0430\u0435\u0442 \u043F\u0440\u0435\u0434\u0435\u043B \u0440\u0430\u0441\u0447\u0451\u0442\u0430, \u043F\u043E\u044F\u0432\u0438\u0442\u0441\u044F \u043F\u0440\u0435\u0434\u0443\u043F\u0440\u0435\u0436\u0434\u0435\u043D\u0438\u0435: \u0443\u043F\u0440\u043E\u0441\u0442\u0438\u0442\u0435 \u043F\u0440\u0430\u0432\u0438\u043B\u043E \u0438\u043B\u0438 \u0441\u043E\u043A\u0440\u0430\u0442\u0438\u0442\u0435 \u0434\u0438\u0430\u043F\u0430\u0437\u043E\u043D."
+      "Stopping a series preserves recorded history. Deletion offers one occurrence or the whole series.",
+      "\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u0435 \u0441\u0435\u0440\u0438\u0438 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u0442 \u0437\u0430\u043F\u0438\u0441\u0430\u043D\u043D\u0443\u044E \u0438\u0441\u0442\u043E\u0440\u0438\u044E. \u041F\u0440\u0438 \u0443\u0434\u0430\u043B\u0435\u043D\u0438\u0438 \u043C\u043E\u0436\u043D\u043E \u0432\u044B\u0431\u0440\u0430\u0442\u044C \u043E\u0434\u043D\u043E \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u0435 \u0438\u043B\u0438 \u0432\u0441\u044E \u0441\u0435\u0440\u0438\u044E."
     )
   ]);
   const legend = section(t("Colors and icons", "\u0426\u0432\u0435\u0442\u0430 \u0438 \u0437\u043D\u0430\u0447\u043A\u0438"), [
     t(
-      "Task colors describe workflow status. Shades are darker in the light theme, with the same meaning. Red overdue labels identify unfinished work past its deadline; they do not mark it Failed. Project deadline cards use the theme accent.",
-      "\u0426\u0432\u0435\u0442 \u0437\u0430\u0434\u0430\u0447\u0438 \u043E\u0431\u043E\u0437\u043D\u0430\u0447\u0430\u0435\u0442 \u0441\u0442\u0430\u0442\u0443\u0441 \u0440\u0430\u0431\u043E\u0442\u044B. \u0412 \u0441\u0432\u0435\u0442\u043B\u043E\u0439 \u0442\u0435\u043C\u0435 \u043E\u0442\u0442\u0435\u043D\u043A\u0438 \u0442\u0435\u043C\u043D\u0435\u0435, \u043D\u043E \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F \u0442\u0435 \u0436\u0435. \u041A\u0440\u0430\u0441\u043D\u0430\u044F \u043F\u043E\u0434\u043F\u0438\u0441\u044C \xAB\u041F\u0440\u043E\u0441\u0440\u043E\u0447\u0435\u043D\u043E\xBB \u043E\u0442\u043C\u0435\u0447\u0430\u0435\u0442 \u043D\u0435\u0437\u0430\u043A\u0440\u044B\u0442\u0443\u044E \u0437\u0430\u0434\u0430\u0447\u0443 \u0441 \u0438\u0441\u0442\u0451\u043A\u0448\u0438\u043C \u0441\u0440\u043E\u043A\u043E\u043C \u0438 \u043D\u0435 \u043F\u0435\u0440\u0435\u0432\u043E\u0434\u0438\u0442 \u0435\u0451 \u0432 \xAB\u041D\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043E\xBB. \u041A\u0430\u0440\u0442\u043E\u0447\u043A\u0438 \u0441\u0440\u043E\u043A\u043E\u0432 \u043F\u0440\u043E\u0435\u043A\u0442\u043E\u0432 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u044E\u0442 \u0430\u043A\u0446\u0435\u043D\u0442 \u0442\u0435\u043C\u044B."
-    ),
-    t(
-      "Continuation marks between start and deadline inherit the task color and strikethrough. They have no checkbox or separate workload; the empty checkbox gutter keeps their titles aligned. Normal priority has no marker. Filter dots show which calendar filters are enabled; they are not task status indicators.",
-      "\u041F\u0440\u043E\u043C\u0435\u0436\u0443\u0442\u043E\u0447\u043D\u044B\u0435 \u043E\u0442\u043C\u0435\u0442\u043A\u0438 \u043C\u0435\u0436\u0434\u0443 \u0441\u0442\u0430\u0440\u0442\u043E\u043C \u0438 \u0434\u0435\u0434\u043B\u0430\u0439\u043D\u043E\u043C \u043D\u0430\u0441\u043B\u0435\u0434\u0443\u044E\u0442 \u0446\u0432\u0435\u0442 \u0438 \u0437\u0430\u0447\u0451\u0440\u043A\u0438\u0432\u0430\u043D\u0438\u0435 \u0437\u0430\u0434\u0430\u0447\u0438. \u0423 \u043D\u0438\u0445 \u043D\u0435\u0442 \u0447\u0435\u043A\u0431\u043E\u043A\u0441\u0430 \u0438 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E\u0439 \u043D\u0430\u0433\u0440\u0443\u0437\u043A\u0438; \u043F\u0443\u0441\u0442\u043E\u0439 \u043E\u0442\u0441\u0442\u0443\u043F \u043F\u043E\u0434 \u0447\u0435\u043A\u0431\u043E\u043A\u0441 \u0432\u044B\u0440\u0430\u0432\u043D\u0438\u0432\u0430\u0435\u0442 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u044F. \u041E\u0431\u044B\u0447\u043D\u044B\u0439 \u043F\u0440\u0438\u043E\u0440\u0438\u0442\u0435\u0442 \u043D\u0435 \u0438\u043C\u0435\u0435\u0442 \u043C\u0430\u0440\u043A\u0435\u0440\u0430. \u0422\u043E\u0447\u043A\u0438 \u043D\u0430 \u043A\u043D\u043E\u043F\u043A\u0430\u0445 \u0444\u0438\u043B\u044C\u0442\u0440\u043E\u0432 \u043F\u043E\u043A\u0430\u0437\u044B\u0432\u0430\u044E\u0442, \u043A\u0430\u043A\u0438\u0435 \u0444\u0438\u043B\u044C\u0442\u0440\u044B \u0432\u043A\u043B\u044E\u0447\u0435\u043D\u044B, \u0438 \u043D\u0435 \u043E\u0431\u043E\u0437\u043D\u0430\u0447\u0430\u044E\u0442 \u0441\u0442\u0430\u0442\u0443\u0441 \u0437\u0430\u0434\u0430\u0447\u0438."
+      "Status colors mark the task accents. Closed titles are muted and crossed out. An overdue label marks unfinished work past its deadline; it does not change its status.",
+      "\u0426\u0432\u0435\u0442 \u0441\u0442\u0430\u0442\u0443\u0441\u0430 \u0432\u0438\u0434\u0435\u043D \u043D\u0430 \u0430\u043A\u0446\u0435\u043D\u0442\u0430\u0445 \u0437\u0430\u0434\u0430\u0447\u0438. \u041D\u0430\u0437\u0432\u0430\u043D\u0438\u044F \u0437\u0430\u043A\u0440\u044B\u0442\u044B\u0445 \u0437\u0430\u0434\u0430\u0447 \u043F\u0440\u0438\u0433\u043B\u0443\u0448\u0435\u043D\u044B \u0438 \u0437\u0430\u0447\u0451\u0440\u043A\u043D\u0443\u0442\u044B. \xAB\u041F\u0440\u043E\u0441\u0440\u043E\u0447\u0435\u043D\u043E\xBB \u043E\u0442\u043C\u0435\u0447\u0430\u0435\u0442 \u043D\u0435\u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043D\u043D\u0443\u044E \u0437\u0430\u0434\u0430\u0447\u0443 \u0441 \u0438\u0441\u0442\u0451\u043A\u0448\u0438\u043C \u0441\u0440\u043E\u043A\u043E\u043C, \u043D\u0435 \u043C\u0435\u043D\u044F\u044F \u0435\u0451 \u0441\u0442\u0430\u0442\u0443\u0441."
     )
   ]);
   legend.classList.add("tp-manual-legend");
@@ -6999,12 +7221,12 @@ function manual(parent, language, author, version) {
       "\u0416\u0451\u043B\u0442\u044B\u0439 / \u044F\u043D\u0442\u0430\u0440\u043D\u044B\u0439 \u2014 \u0437\u0430\u0434\u0430\u0447\u0430 \u0432 \u0440\u0430\u0431\u043E\u0442\u0435, \u043D\u0435\u0437\u0430\u0432\u0438\u0441\u0438\u043C\u043E \u043E\u0442 \u043F\u0440\u0438\u043E\u0440\u0438\u0442\u0435\u0442\u0430."
     ),
     done: t(
-      "Green and strikethrough \u2014 completed work.",
-      "\u0417\u0435\u043B\u0451\u043D\u044B\u0439 \u0438 \u0437\u0430\u0447\u0451\u0440\u043A\u043D\u0443\u0442\u043E\u0435 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u2014 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043D\u0430\u044F \u0437\u0430\u0434\u0430\u0447\u0430."
+      "Green accent \u2014 completed work; muted, crossed-out title.",
+      "\u0417\u0435\u043B\u0451\u043D\u044B\u0439 \u0430\u043A\u0446\u0435\u043D\u0442 \u2014 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043E; \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u043F\u0440\u0438\u0433\u043B\u0443\u0448\u0435\u043D\u043E \u0438 \u0437\u0430\u0447\u0451\u0440\u043A\u043D\u0443\u0442\u043E."
     ),
     failed: t(
-      "Red / pink and strikethrough \u2014 failed work.",
-      "\u041A\u0440\u0430\u0441\u043D\u044B\u0439 / \u0440\u043E\u0437\u043E\u0432\u044B\u0439 \u0438 \u0437\u0430\u0447\u0451\u0440\u043A\u043D\u0443\u0442\u043E\u0435 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u2014 \u0437\u0430\u0434\u0430\u0447\u0430 \u043D\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0430."
+      "Red / pink accent \u2014 failed work; muted, crossed-out title.",
+      "\u041A\u0440\u0430\u0441\u043D\u044B\u0439 / \u0440\u043E\u0437\u043E\u0432\u044B\u0439 \u0430\u043A\u0446\u0435\u043D\u0442 \u2014 \u043D\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043E; \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u043F\u0440\u0438\u0433\u043B\u0443\u0448\u0435\u043D\u043E \u0438 \u0437\u0430\u0447\u0451\u0440\u043A\u043D\u0443\u0442\u043E."
     )
   };
   for (const status of STATUSES) {
@@ -7043,6 +7265,14 @@ function manual(parent, language, author, version) {
     w.meeting,
     t("People icon \u2014 Meeting task type.", "\u0417\u043D\u0430\u0447\u043E\u043A \u043B\u044E\u0434\u0435\u0439 \u2014 \u0442\u0438\u043F \u0437\u0430\u0434\u0430\u0447\u0438 \xAB\u0412\u0441\u0442\u0440\u0435\u0447\u0430\xBB."),
     "users-round"
+  );
+  addKey(
+    w.contact,
+    t(
+      "Message icon \u2014 write or call someone.",
+      "\u0417\u043D\u0430\u0447\u043E\u043A \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u044F \u2014 \u043D\u0430\u043F\u0438\u0441\u0430\u0442\u044C \u0438\u043B\u0438 \u043F\u043E\u0437\u0432\u043E\u043D\u0438\u0442\u044C \u0447\u0435\u043B\u043E\u0432\u0435\u043A\u0443."
+    ),
+    "message-circle"
   );
   addKey(
     w.payment,
@@ -7147,68 +7377,56 @@ function manual(parent, language, author, version) {
     "trash-2"
   );
   section(t("Lists, calendar and boards", "\u0421\u043F\u0438\u0441\u043A\u0438, \u043A\u0430\u043B\u0435\u043D\u0434\u0430\u0440\u044C \u0438 \u0434\u043E\u0441\u043A\u0438"), [
-    w.help,
-    w.boardHelp,
-    w.boardPeriodHint,
     t(
-      "Day, Week and Month show the chosen work days and the separate deadline. Subtle continuation marks link start and deadline without checkboxes, work sessions or additional workload; clicking one edits the original task. Date sets the primary work day. Additional dates already saved in the note\u2019s workDates field remain visible and are preserved when editing the task. Deadline-only cards appear at the bottom of their day without a separate lane. Expanded names and project labels wrap in full; area/project context is included; no tasks are hidden behind count buttons. Dragging a work day moves only that session; dragging a deadline moves only the deadline. A task still has one status and one total of spent minutes. Extra work days cannot be combined with a recurrence rule.",
-      "\u0420\u0435\u0436\u0438\u043C\u044B \xAB\u0414\u0435\u043D\u044C\xBB, \xAB\u041D\u0435\u0434\u0435\u043B\u044F\xBB \u0438 \xAB\u041C\u0435\u0441\u044F\u0446\xBB \u043F\u043E\u043A\u0430\u0437\u044B\u0432\u0430\u044E\u0442 \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u044B\u0435 \u0434\u043D\u0438 \u0440\u0430\u0431\u043E\u0442\u044B \u0438 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u044B\u0439 \u0434\u0435\u0434\u043B\u0430\u0439\u043D. \u041C\u0435\u0436\u0434\u0443 \u0441\u0442\u0430\u0440\u0442\u043E\u043C \u0438 \u0434\u0435\u0434\u043B\u0430\u0439\u043D\u043E\u043C \u0432\u0438\u0434\u043D\u044B \u043F\u0440\u0438\u0433\u043B\u0443\u0448\u0451\u043D\u043D\u044B\u0435 \u043E\u0442\u043C\u0435\u0442\u043A\u0438 \u0431\u0435\u0437 \u0447\u0435\u043A\u0431\u043E\u043A\u0441\u043E\u0432 \u0438 \u0434\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u0439 \u043D\u0430\u0433\u0440\u0443\u0437\u043A\u0438. \u041D\u0430\u0436\u0430\u0442\u0438\u0435 \u043E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u0438\u0441\u0445\u043E\u0434\u043D\u0443\u044E \u0437\u0430\u0434\u0430\u0447\u0443. \u041F\u043E\u043B\u0435 \xAB\u0414\u0430\u0442\u0430\xBB \u0437\u0430\u0434\u0430\u0451\u0442 \u043E\u0441\u043D\u043E\u0432\u043D\u043E\u0439 \u0440\u0430\u0431\u043E\u0447\u0438\u0439 \u0434\u0435\u043D\u044C. \u0414\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0435 \u0434\u0430\u0442\u044B, \u0443\u0436\u0435 \u0441\u043E\u0445\u0440\u0430\u043D\u0451\u043D\u043D\u044B\u0435 \u0432 \u043F\u043E\u043B\u0435 workDates \u0437\u0430\u043C\u0435\u0442\u043A\u0438, \u043E\u0441\u0442\u0430\u044E\u0442\u0441\u044F \u0432\u0438\u0434\u0438\u043C\u044B\u043C\u0438 \u0438 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u044E\u0442\u0441\u044F \u043F\u0440\u0438 \u0440\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0438 \u0437\u0430\u0434\u0430\u0447\u0438. \u041A\u0430\u0440\u0442\u043E\u0447\u043A\u0430 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E\u0433\u043E \u0434\u0435\u0434\u043B\u0430\u0439\u043D\u0430 \u043D\u0430\u0445\u043E\u0434\u0438\u0442\u0441\u044F \u0432\u043D\u0438\u0437\u0443 \u0434\u043D\u044F, \u0431\u0435\u0437 \u0434\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u0439 \u043F\u043E\u043B\u043E\u0441\u044B. \u041F\u043E\u0441\u043B\u0435 \u0440\u0430\u0441\u043A\u0440\u044B\u0442\u0438\u044F \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0438 \u043F\u0440\u043E\u0435\u043A\u0442 \u0432\u0438\u0434\u043D\u044B \u043F\u043E\u043B\u043D\u043E\u0441\u0442\u044C\u044E; \u0441\u0444\u0435\u0440\u0430 \u043F\u043E\u043A\u0430\u0437\u0430\u043D\u0430 \u0440\u044F\u0434\u043E\u043C \u0441 \u043F\u0440\u043E\u0435\u043A\u0442\u043E\u043C; \u0437\u0430\u0434\u0430\u0447 \u043F\u043E\u0434 \u043A\u043D\u043E\u043F\u043A\u0430\u043C\u0438 \u0441 \u043A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E\u043C \u043D\u0435\u0442. \u041F\u0435\u0440\u0435\u0442\u0430\u0441\u043A\u0438\u0432\u0430\u043D\u0438\u0435 \u0440\u0430\u0431\u043E\u0447\u0435\u0433\u043E \u0434\u043D\u044F \u043F\u0435\u0440\u0435\u043D\u043E\u0441\u0438\u0442 \u0442\u043E\u043B\u044C\u043A\u043E \u0435\u0433\u043E, \u0430 \u0434\u0435\u0434\u043B\u0430\u0439\u043D\u0430 \u2014 \u0442\u043E\u043B\u044C\u043A\u043E \u0441\u0440\u043E\u043A. \u0421\u0442\u0430\u0442\u0443\u0441 \u0438 \u0444\u0430\u043A\u0442\u0438\u0447\u0435\u0441\u043A\u0438 \u0437\u0430\u0442\u0440\u0430\u0447\u0435\u043D\u043D\u044B\u0435 \u043C\u0438\u043D\u0443\u0442\u044B \u043E\u0441\u0442\u0430\u044E\u0442\u0441\u044F \u043E\u0431\u0449\u0438\u043C\u0438 \u0434\u043B\u044F \u0437\u0430\u0434\u0430\u0447\u0438. \u0414\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0435 \u0434\u043D\u0438 \u043D\u0435\u043B\u044C\u0437\u044F \u0441\u043E\u0432\u043C\u0435\u0449\u0430\u0442\u044C \u0441 \u043F\u0440\u0430\u0432\u0438\u043B\u043E\u043C \u043F\u043E\u0432\u0442\u043E\u0440\u0435\u043D\u0438\u044F."
+      "Day, Week and Month show work dates and deadlines. Dragging a work card moves that session; dragging the final deadline card moves the deadline. Planning adds work days and splits the estimate between them. Boards change task status.",
+      "\xAB\u0414\u0435\u043D\u044C\xBB, \xAB\u041D\u0435\u0434\u0435\u043B\u044F\xBB \u0438 \xAB\u041C\u0435\u0441\u044F\u0446\xBB \u043F\u043E\u043A\u0430\u0437\u044B\u0432\u0430\u044E\u0442 \u0440\u0430\u0431\u043E\u0447\u0438\u0435 \u0434\u0430\u0442\u044B \u0438 \u0434\u0435\u0434\u043B\u0430\u0439\u043D\u044B. \u041F\u0435\u0440\u0435\u043D\u043E\u0441 \u0440\u0430\u0431\u043E\u0447\u0435\u0439 \u043A\u0430\u0440\u0442\u043E\u0447\u043A\u0438 \u043C\u0435\u043D\u044F\u0435\u0442 \u044D\u0442\u043E\u0442 \u0434\u0435\u043D\u044C, \u043A\u043E\u043D\u0435\u0447\u043D\u043E\u0439 \u043A\u0430\u0440\u0442\u043E\u0447\u043A\u0438 \u2014 \u0434\u0435\u0434\u043B\u0430\u0439\u043D. \xAB\u041F\u043B\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435\xBB \u0434\u043E\u0431\u0430\u0432\u043B\u044F\u0435\u0442 \u0440\u0430\u0431\u043E\u0447\u0438\u0435 \u0434\u043D\u0438 \u0438 \u0440\u0430\u0441\u043F\u0440\u0435\u0434\u0435\u043B\u044F\u0435\u0442 \u043E\u0446\u0435\u043D\u043A\u0443 \u0432\u0440\u0435\u043C\u0435\u043D\u0438. \u0414\u043E\u0441\u043A\u0438 \u043F\u043E\u043C\u043E\u0433\u0430\u044E\u0442 \u043C\u0435\u043D\u044F\u0442\u044C \u0441\u0442\u0430\u0442\u0443\u0441 \u0437\u0430\u0434\u0430\u0447."
     ),
     t(
-      "Hide completed, Hide failed and Hide recurring independently filter calendar cards. Day, Week and Month share these choices while the view stays open. Task status, planned load, time, expenses and subscription forecasts remain unchanged.",
-      "\xAB\u0421\u043A\u0440\u044B\u0442\u044C \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043D\u044B\u0435\xBB, \xAB\u0421\u043A\u0440\u044B\u0442\u044C \u043F\u0440\u043E\u0432\u0430\u043B\u0435\u043D\u043D\u044B\u0435\xBB \u0438 \xAB\u0421\u043A\u0440\u044B\u0442\u044C \u043F\u043E\u0432\u0442\u043E\u0440\u044F\u044E\u0449\u0438\u0435\u0441\u044F\xBB \u043D\u0435\u0437\u0430\u0432\u0438\u0441\u0438\u043C\u043E \u0441\u043A\u0440\u044B\u0432\u0430\u044E\u0442 \u043A\u0430\u0440\u0442\u043E\u0447\u043A\u0438 \u043A\u0430\u043B\u0435\u043D\u0434\u0430\u0440\u044F. \u0412\u044B\u0431\u043E\u0440 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u0442\u0441\u044F \u0434\u043B\u044F \u0434\u043D\u044F, \u043D\u0435\u0434\u0435\u043B\u0438 \u0438 \u043C\u0435\u0441\u044F\u0446\u0430, \u043F\u043E\u043A\u0430 \u043E\u0442\u043A\u0440\u044B\u0442 \u044D\u0442\u043E\u0442 \u0432\u0438\u0434 \u043F\u043B\u0430\u043D\u0438\u0440\u043E\u0432\u0449\u0438\u043A\u0430. \u0421\u0442\u0430\u0442\u0443\u0441\u044B, \u043F\u043B\u0430\u043D\u043E\u0432\u0430\u044F \u043D\u0430\u0433\u0440\u0443\u0437\u043A\u0430, \u0432\u0440\u0435\u043C\u044F, \u0440\u0430\u0441\u0445\u043E\u0434\u044B \u0438 \u043F\u0440\u043E\u0433\u043D\u043E\u0437 \u043F\u043E\u0434\u043F\u0438\u0441\u043E\u043A \u043D\u0435 \u043C\u0435\u043D\u044F\u044E\u0442\u0441\u044F."
+      "Full titles wrap without truncation. Wide calendars align multi-day tasks; narrow panes use an agenda. Continuation cards add no workload. Display controls details, task visibility and the optional three-entry Month overview; Show more opens the full day.",
+      "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u044F \u043F\u0435\u0440\u0435\u043D\u043E\u0441\u044F\u0442\u0441\u044F \u043F\u043E\u043B\u043D\u043E\u0441\u0442\u044C\u044E. \u0412 \u0448\u0438\u0440\u043E\u043A\u043E\u043C \u043A\u0430\u043B\u0435\u043D\u0434\u0430\u0440\u0435 \u043C\u043D\u043E\u0433\u043E\u0434\u043D\u0435\u0432\u043D\u044B\u0435 \u0437\u0430\u0434\u0430\u0447\u0438 \u0432\u044B\u0440\u043E\u0432\u043D\u0435\u043D\u044B \u043F\u043E \u0441\u0442\u0440\u043E\u043A\u0430\u043C, \u0432 \u0443\u0437\u043A\u043E\u043C \u043F\u043E\u043A\u0430\u0437\u0430\u043D\u0430 \u043F\u043E\u0432\u0435\u0441\u0442\u043A\u0430. \u041F\u0440\u043E\u043C\u0435\u0436\u0443\u0442\u043E\u0447\u043D\u044B\u0435 \u043A\u0430\u0440\u0442\u043E\u0447\u043A\u0438 \u043D\u0435 \u0434\u043E\u0431\u0430\u0432\u043B\u044F\u044E\u0442 \u043D\u0430\u0433\u0440\u0443\u0437\u043A\u0443. \xAB\u041E\u0442\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435\xBB \u0443\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u0442 \u043F\u043E\u0434\u0440\u043E\u0431\u043D\u043E\u0441\u0442\u044F\u043C\u0438, \u0432\u0438\u0434\u0438\u043C\u043E\u0441\u0442\u044C\u044E \u0437\u0430\u0434\u0430\u0447 \u0438 \u043B\u0438\u043C\u0438\u0442\u043E\u043C \u0432 \u0442\u0440\u0438 \u0437\u0430\u043F\u0438\u0441\u0438 \u043D\u0430 \u0434\u0435\u043D\u044C \u043C\u0435\u0441\u044F\u0446\u0430; \xAB\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0435\u0449\u0451\xBB \u043E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442 \u0432\u0435\u0441\u044C \u0434\u0435\u043D\u044C."
+    ),
+    t(
+      "In Month, a small underline marks the current week. Weekends use only a subtle text color; today has its own marker. Daily workload bars remain visible across all weeks. Click the period title to jump to a date.",
+      "\u0412 \u043C\u0435\u0441\u044F\u0446\u0435 \u0442\u0435\u043A\u0443\u0449\u0430\u044F \u043D\u0435\u0434\u0435\u043B\u044F \u043E\u0442\u043C\u0435\u0447\u0435\u043D\u0430 \u043A\u043E\u0440\u043E\u0442\u043A\u043E\u0439 \u043B\u0438\u043D\u0438\u0435\u0439 \u043F\u043E\u0434 \u0434\u0430\u0442\u0430\u043C\u0438. \u0412\u044B\u0445\u043E\u0434\u043D\u044B\u0435 \u043E\u0442\u043B\u0438\u0447\u0430\u044E\u0442\u0441\u044F \u0442\u043E\u043B\u044C\u043A\u043E \u043E\u0442\u0442\u0435\u043D\u043A\u043E\u043C \u0442\u0435\u043A\u0441\u0442\u0430, \u0443 \u0441\u0435\u0433\u043E\u0434\u043D\u044F\u0448\u043D\u0435\u0433\u043E \u0434\u043D\u044F \u0441\u0432\u043E\u0439 \u043C\u0430\u0440\u043A\u0435\u0440. \u041F\u043E\u043B\u043E\u0441\u043A\u0438 \u043D\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u0432\u0438\u0434\u043D\u044B \u0432\u043E \u0432\u0441\u0435\u0445 \u043D\u0435\u0434\u0435\u043B\u044F\u0445. \u041D\u0430\u0436\u043C\u0438\u0442\u0435 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u043F\u0435\u0440\u0438\u043E\u0434\u0430 \u0434\u043B\u044F \u043F\u0435\u0440\u0435\u0445\u043E\u0434\u0430 \u043A \u0434\u0430\u0442\u0435."
     )
   ]);
   section(t("Planned workload", "\u041F\u043B\u0430\u043D\u043E\u0432\u0430\u044F \u043D\u0430\u0433\u0440\u0443\u0437\u043A\u0430"), [
     t(
-      "Estimated time estimates the whole task and stays separate from manually recorded spent minutes. Open cards show Estimate: 3 h or Estimate: 1 h 30 min. Completed work shows Plan and, when positive spent minutes are recorded, Spent, in lists, the calendar and boards. Missing estimates and unrecorded spent time are omitted. Recurring work uses its selected occurrence\u2019s spent minutes. The estimate is divided equally across its selected work days; rounding preserves the exact total. With no work days, the estimate belongs to the deadline. A recurring occurrence receives its own full estimate. Completed and failed work, payments and subscriptions are excluded from planned load. Unknown estimates are counted separately. Daily capacity defaults to 480 minutes and can be changed in Settings; zero means no available time. Day and Today show planned time and available daily time with separate labels. Week and Month show estimated time, tasks without estimates and overloaded days. Repeated sessions of the same one-off task count once in the unknown-estimate total; recurring occurrences count separately. An empty estimate is shown as unknown, with no empty progress bar. Moving or reopening work recomputes the load without altering spent minutes.",
-      "\u041E\u0446\u0435\u043D\u043A\u0430 \u0432\u0440\u0435\u043C\u0435\u043D\u0438 \u043E\u0442\u043D\u043E\u0441\u0438\u0442\u0441\u044F \u043A\u043E \u0432\u0441\u0435\u0439 \u0437\u0430\u0434\u0430\u0447\u0435 \u0438 \u043E\u0442\u0434\u0435\u043B\u0435\u043D\u0430 \u043E\u0442 \u0444\u0430\u043A\u0442\u0438\u0447\u0435\u0441\u043A\u0438 \u0437\u0430\u0442\u0440\u0430\u0447\u0435\u043D\u043D\u043E\u0433\u043E \u0432\u0440\u0435\u043C\u0435\u043D\u0438. \u0423 \u043E\u0442\u043A\u0440\u044B\u0442\u044B\u0445 \u0437\u0430\u0434\u0430\u0447 \u043E\u043D\u0430 \u043F\u043E\u043A\u0430\u0437\u0430\u043D\u0430 \u043A\u0440\u0430\u0442\u043A\u043E: \xAB\u041E\u0446\u0435\u043D\u043A\u0430: 3 \u0447\xBB \u0438\u043B\u0438 \xAB\u041E\u0446\u0435\u043D\u043A\u0430: 1 \u0447 30 \u043C\u0438\u043D\xBB. \u0423 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043D\u044B\u0445 \u0437\u0430\u0434\u0430\u0447 \u0432 \u0441\u043F\u0438\u0441\u043A\u0430\u0445, \u043A\u0430\u043B\u0435\u043D\u0434\u0430\u0440\u0435 \u0438 \u043D\u0430 \u0434\u043E\u0441\u043A\u0430\u0445 \u043F\u043E\u043A\u0430\u0437\u0430\u043D \xAB\u041F\u043B\u0430\u043D\xBB \u0438, \u0435\u0441\u043B\u0438 \u0432\u0432\u0435\u0434\u0435\u043D\u043E \u043F\u043E\u043B\u043E\u0436\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u0435 \u0437\u0430\u0442\u0440\u0430\u0447\u0435\u043D\u043D\u043E\u0435 \u0432\u0440\u0435\u043C\u044F, \xAB\u041F\u043E\u0442\u0440\u0430\u0447\u0435\u043D\u043E\xBB. \u0415\u0441\u043B\u0438 \u043E\u0446\u0435\u043D\u043A\u0430 \u0438\u043B\u0438 \u0437\u0430\u0442\u0440\u0430\u0447\u0435\u043D\u043D\u043E\u0435 \u0432\u0440\u0435\u043C\u044F \u043D\u0435 \u0443\u043A\u0430\u0437\u0430\u043D\u044B, \u0441\u043E\u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0443\u044E\u0449\u0430\u044F \u043F\u043E\u0434\u043F\u0438\u0441\u044C \u043D\u0435 \u043F\u043E\u043A\u0430\u0437\u044B\u0432\u0430\u0435\u0442\u0441\u044F. \u0414\u043B\u044F \u043F\u043E\u0432\u0442\u043E\u0440\u043E\u0432 \u0431\u0435\u0440\u0443\u0442\u0441\u044F \u043C\u0438\u043D\u0443\u0442\u044B \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u043E\u0433\u043E \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F. \u041E\u0446\u0435\u043D\u043A\u0430 \u0440\u0430\u0441\u043F\u0440\u0435\u0434\u0435\u043B\u044F\u0435\u0442\u0441\u044F \u043F\u043E\u0440\u043E\u0432\u043D\u0443 \u043C\u0435\u0436\u0434\u0443 \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u044B\u043C\u0438 \u0434\u043D\u044F\u043C\u0438 \u0440\u0430\u0431\u043E\u0442\u044B \u0441 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u0435\u043C \u0442\u043E\u0447\u043D\u043E\u0439 \u0441\u0443\u043C\u043C\u044B. \u0415\u0441\u043B\u0438 \u0440\u0430\u0431\u043E\u0447\u0438\u0445 \u0434\u043D\u0435\u0439 \u043D\u0435\u0442, \u043E\u0446\u0435\u043D\u043A\u0430 \u043E\u0442\u043D\u043E\u0441\u0438\u0442\u0441\u044F \u043A \u0434\u0435\u0434\u043B\u0430\u0439\u043D\u0443. \u0414\u043B\u044F \u043A\u0430\u0436\u0434\u043E\u0433\u043E \u043F\u043E\u0432\u0442\u043E\u0440\u0430 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0435\u0442\u0441\u044F \u043F\u043E\u043B\u043D\u0430\u044F \u043E\u0446\u0435\u043D\u043A\u0430. \u0412\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043D\u044B\u0435 \u0438 \u043D\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043D\u044B\u0435 \u0434\u0435\u043B\u0430, \u043F\u043B\u0430\u0442\u0435\u0436\u0438 \u0438 \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0438 \u0432 \u043D\u0430\u0433\u0440\u0443\u0437\u043A\u0443 \u043D\u0435 \u0432\u0445\u043E\u0434\u044F\u0442; \u0437\u0430\u0434\u0430\u0447\u0438 \u0431\u0435\u0437 \u043E\u0446\u0435\u043D\u043A\u0438 \u0443\u0447\u0438\u0442\u044B\u0432\u0430\u044E\u0442\u0441\u044F \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E. \u0412 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430\u0445 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u043E \u0432\u0440\u0435\u043C\u044F \u043D\u0430 \u0434\u0435\u043D\u044C: \u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E 480 \u043C\u0438\u043D\u0443\u0442, \u043D\u043E\u043B\u044C \u043E\u0437\u043D\u0430\u0447\u0430\u0435\u0442 \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0438\u0435 \u0441\u0432\u043E\u0431\u043E\u0434\u043D\u043E\u0433\u043E \u0432\u0440\u0435\u043C\u0435\u043D\u0438. \xAB\u0414\u0435\u043D\u044C\xBB \u0438 \xAB\u0421\u0435\u0433\u043E\u0434\u043D\u044F\xBB \u043F\u043E\u043A\u0430\u0437\u044B\u0432\u0430\u044E\u0442 \u043F\u043B\u0430\u043D \u0438 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u043E\u0435 \u0432\u0440\u0435\u043C\u044F \u0441 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u044B\u043C\u0438 \u043F\u043E\u0434\u043F\u0438\u0441\u044F\u043C\u0438. \u0412 \u043D\u0435\u0434\u0435\u043B\u0435 \u0438 \u043C\u0435\u0441\u044F\u0446\u0435 \u0432\u0438\u0434\u043D\u044B \u043E\u0446\u0435\u043D\u0451\u043D\u043D\u043E\u0435 \u0432\u0440\u0435\u043C\u044F, \u0437\u0430\u0434\u0430\u0447\u0438 \u0431\u0435\u0437 \u043E\u0446\u0435\u043D\u043A\u0438 \u0438 \u0434\u043D\u0438 \u0441 \u043F\u0435\u0440\u0435\u0433\u0440\u0443\u0437\u043A\u043E\u0439. \u041E\u0434\u043D\u0430 \u0437\u0430\u0434\u0430\u0447\u0430 \u0441 \u043D\u0435\u0441\u043A\u043E\u043B\u044C\u043A\u0438\u043C\u0438 \u0440\u0430\u0431\u043E\u0447\u0438\u043C\u0438 \u0434\u043D\u044F\u043C\u0438 \u0441\u0447\u0438\u0442\u0430\u0435\u0442\u0441\u044F \u043E\u0434\u0438\u043D \u0440\u0430\u0437 \u0432 \u043E\u0431\u0449\u0435\u043C \u0447\u0438\u0441\u043B\u0435 \u0437\u0430\u0434\u0430\u0447 \u0431\u0435\u0437 \u043E\u0446\u0435\u043D\u043A\u0438; \u043F\u043E\u0432\u0442\u043E\u0440\u044B \u0441\u0447\u0438\u0442\u0430\u044E\u0442\u0441\u044F \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E. \u041F\u0443\u0441\u0442\u0430\u044F \u043E\u0446\u0435\u043D\u043A\u0430 \u043E\u0442\u043E\u0431\u0440\u0430\u0436\u0430\u0435\u0442\u0441\u044F \u043A\u0430\u043A \u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F, \u0431\u0435\u0437 \u043F\u0443\u0441\u0442\u043E\u0433\u043E \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441-\u0431\u0430\u0440\u0430. \u041F\u0435\u0440\u0435\u043D\u043E\u0441 \u0438 \u043F\u0435\u0440\u0435\u043E\u0442\u043A\u0440\u044B\u0442\u0438\u0435 \u043E\u0431\u043D\u043E\u0432\u043B\u044F\u044E\u0442 \u043D\u0430\u0433\u0440\u0443\u0437\u043A\u0443, \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u044F \u0444\u0430\u043A\u0442\u0438\u0447\u0435\u0441\u043A\u0438 \u0437\u0430\u0442\u0440\u0430\u0447\u0435\u043D\u043D\u044B\u0435 \u043C\u0438\u043D\u0443\u0442\u044B."
+      "The estimate is planned time; Spent is recorded manually. A one-off estimate is divided between work days, while each repeat gets its full estimate. Closed work, payments and subscriptions do not add planned load. Missing estimates are counted separately.",
+      "\u041E\u0446\u0435\u043D\u043A\u0430 \u2014 \u043F\u043B\u0430\u043D \u0432\u0440\u0435\u043C\u0435\u043D\u0438; \u0437\u0430\u0442\u0440\u0430\u0447\u0435\u043D\u043D\u043E\u0435 \u0432\u0440\u0435\u043C\u044F \u0432\u0432\u043E\u0434\u0438\u0442\u0441\u044F \u0432\u0440\u0443\u0447\u043D\u0443\u044E. \u041E\u0446\u0435\u043D\u043A\u0430 \u043E\u0431\u044B\u0447\u043D\u043E\u0439 \u0437\u0430\u0434\u0430\u0447\u0438 \u0434\u0435\u043B\u0438\u0442\u0441\u044F \u043C\u0435\u0436\u0434\u0443 \u0440\u0430\u0431\u043E\u0447\u0438\u043C\u0438 \u0434\u043D\u044F\u043C\u0438, \u0443 \u043A\u0430\u0436\u0434\u043E\u0433\u043E \u043F\u043E\u0432\u0442\u043E\u0440\u0430 \u043E\u043D\u0430 \u043F\u043E\u043B\u043D\u0430\u044F. \u0417\u0430\u043A\u0440\u044B\u0442\u044B\u0435 \u0437\u0430\u0434\u0430\u0447\u0438, \u043F\u043B\u0430\u0442\u0435\u0436\u0438 \u0438 \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0438 \u043D\u0435 \u0443\u0432\u0435\u043B\u0438\u0447\u0438\u0432\u0430\u044E\u0442 \u043F\u043B\u0430\u043D\u043E\u0432\u0443\u044E \u043D\u0430\u0433\u0440\u0443\u0437\u043A\u0443. \u0417\u0430\u0434\u0430\u0447\u0438 \u0431\u0435\u0437 \u043E\u0446\u0435\u043D\u043A\u0438 \u0443\u0447\u0438\u0442\u044B\u0432\u0430\u044E\u0442\u0441\u044F \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E."
+    ),
+    t(
+      "Daily capacity defaults to 480 minutes and is configurable. Open the time indicator for details; red indicates overload. Reopening preserves the recorded result and spent time.",
+      "\u0414\u043E\u0441\u0442\u0443\u043F\u043D\u043E\u0435 \u0432\u0440\u0435\u043C\u044F \u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E \u2014 480 \u043C\u0438\u043D\u0443\u0442 \u0432 \u0434\u0435\u043D\u044C; \u0435\u0433\u043E \u043C\u043E\u0436\u043D\u043E \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u0432 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430\u0445. \u041D\u0430\u0436\u043C\u0438\u0442\u0435 \u043F\u043E\u043A\u0430\u0437\u0430\u0442\u0435\u043B\u044C \u0432\u0440\u0435\u043C\u0435\u043D\u0438 \u0434\u043B\u044F \u043F\u043E\u0434\u0440\u043E\u0431\u043D\u043E\u0441\u0442\u0435\u0439; \u043A\u0440\u0430\u0441\u043D\u044B\u0439 \u043E\u0437\u043D\u0430\u0447\u0430\u0435\u0442 \u043F\u0435\u0440\u0435\u0433\u0440\u0443\u0437\u043A\u0443. \u041F\u0435\u0440\u0435\u043E\u0442\u043A\u0440\u044B\u0442\u0438\u0435 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u0442 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 \u0438 \u0437\u0430\u043F\u0438\u0441\u0430\u043D\u043D\u043E\u0435 \u0432\u0440\u0435\u043C\u044F."
     )
   ]);
   section(t("Statistics", "\u0421\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0430"), [
     t(
-      "The period selector uses the current calendar week, month, quarter or year and is shared by work statistics, financial statistics and Payments. The full date range stays beneath the period buttons; today\u2019s date sits beside the header actions. Dates in expense and budget panels belong to their headings. Work results and time are reported for that period; Overall statistics and project progress are explicitly marked All time. Spending shows every currency at once in separate line charts with the same dates and independent monetary scales. Zero days are retained; exact daily values for all currencies are available together.",
-      "\u0412\u044B\u0431\u043E\u0440 \u043F\u0435\u0440\u0438\u043E\u0434\u0430 \u043E\u0437\u043D\u0430\u0447\u0430\u0435\u0442 \u0442\u0435\u043A\u0443\u0449\u0438\u0435 \u043A\u0430\u043B\u0435\u043D\u0434\u0430\u0440\u043D\u044B\u0435 \u043D\u0435\u0434\u0435\u043B\u044E, \u043C\u0435\u0441\u044F\u0446, \u043A\u0432\u0430\u0440\u0442\u0430\u043B \u0438\u043B\u0438 \u0433\u043E\u0434 \u0438 \u043E\u0431\u0449\u0438\u0439 \u0434\u043B\u044F \u0434\u0435\u043B\u043E\u0432\u043E\u0439 \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0438, \u0444\u0438\u043D\u0430\u043D\u0441\u043E\u0432\u043E\u0439 \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0438 \u0438 \u043F\u043B\u0430\u0442\u0435\u0436\u0435\u0439. \u041F\u043E\u043B\u043D\u044B\u0439 \u0434\u0438\u0430\u043F\u0430\u0437\u043E\u043D \u0434\u0430\u0442 \u0440\u0430\u0441\u043F\u043E\u043B\u043E\u0436\u0435\u043D \u043F\u043E\u0434 \u043A\u043D\u043E\u043F\u043A\u0430\u043C\u0438 \u043F\u0435\u0440\u0438\u043E\u0434\u0430, \u0430 \u0441\u0435\u0433\u043E\u0434\u043D\u044F\u0448\u043D\u044F\u044F \u0434\u0430\u0442\u0430 \u2014 \u0440\u044F\u0434\u043E\u043C \u0441 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F\u043C\u0438 \u0432 \u0448\u0430\u043F\u043A\u0435. \u0412 \u0440\u0430\u0441\u0445\u043E\u0434\u0430\u0445 \u0438 \u0431\u044E\u0434\u0436\u0435\u0442\u0430\u0445 \u0434\u0430\u0442\u044B \u0432\u0445\u043E\u0434\u044F\u0442 \u0432 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438 \u0441\u043E\u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0443\u044E\u0449\u0438\u0445 \u0431\u043B\u043E\u043A\u043E\u0432. \u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u044B \u0434\u0435\u043B \u0438 \u0437\u0430\u0442\u0440\u0430\u0447\u0435\u043D\u043D\u043E\u0435 \u0432\u0440\u0435\u043C\u044F \u043E\u0442\u043D\u043E\u0441\u044F\u0442\u0441\u044F \u043A \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u043E\u043C\u0443 \u043F\u0435\u0440\u0438\u043E\u0434\u0443; \u043E\u0431\u0449\u0430\u044F \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0430 \u0438 \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441 \u043F\u0440\u043E\u0435\u043A\u0442\u043E\u0432 \u043E\u0442\u043C\u0435\u0447\u0435\u043D\u044B \u043A\u0430\u043A \xAB\u0417\u0430 \u0432\u0441\u0451 \u0432\u0440\u0435\u043C\u044F\xBB. \u0420\u0430\u0441\u0445\u043E\u0434\u044B \u0432\u043E \u0432\u0441\u0435\u0445 \u0432\u0430\u043B\u044E\u0442\u0430\u0445 \u043F\u043E\u043A\u0430\u0437\u0430\u043D\u044B \u043E\u0434\u043D\u043E\u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E: \u0443 \u043A\u0430\u0436\u0434\u043E\u0439 \u0432\u0430\u043B\u044E\u0442\u044B \u0441\u0432\u043E\u0439 \u0433\u0440\u0430\u0444\u0438\u043A \u0441 \u043E\u0434\u0438\u043D\u0430\u043A\u043E\u0432\u044B\u043C\u0438 \u0434\u0430\u0442\u0430\u043C\u0438 \u0438 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E\u0439 \u0434\u0435\u043D\u0435\u0436\u043D\u043E\u0439 \u0448\u043A\u0430\u043B\u043E\u0439. \u0414\u043D\u0438 \u0431\u0435\u0437 \u043E\u043F\u043B\u0430\u0442 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u044B; \u0442\u043E\u0447\u043D\u044B\u0435 \u0441\u0443\u043C\u043C\u044B \u043F\u043E \u0432\u0441\u0435\u043C \u0432\u0430\u043B\u044E\u0442\u0430\u043C \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B \u0432\u043C\u0435\u0441\u0442\u0435 \u0432 \u0434\u0430\u043D\u043D\u044B\u0445 \u043F\u043E \u0434\u043D\u044F\u043C."
-    ),
-    w.statsHelp,
-    w.statsTimeHelp,
-    w.periodRangeHelp,
-    t(
-      "Completion and failed-task counts use separate lines on one scale. Closed minutes have their own line chart. Every date in the selected period is retained, including zero-value days. Quarters group days by week; years group by month. Sparse horizontal date labels keep the charts readable; exact daily numbers remain in the expandable table.",
-      "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043D\u044B\u0445 \u0438 \u043D\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043D\u044B\u0445 \u0434\u0435\u043B \u043F\u043E\u043A\u0430\u0437\u0430\u043D\u043E \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u044B\u043C\u0438 \u043B\u0438\u043D\u0438\u044F\u043C\u0438 \u043D\u0430 \u043E\u0434\u043D\u043E\u0439 \u0448\u043A\u0430\u043B\u0435. \u041C\u0438\u043D\u0443\u0442\u044B \u0437\u0430\u043A\u0440\u044B\u0442\u044B\u0445 \u0434\u0435\u043B \u2014 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E\u0439 \u043B\u0438\u043D\u0435\u0439\u043D\u043E\u0439 \u0434\u0438\u0430\u0433\u0440\u0430\u043C\u043C\u043E\u0439. \u0421\u043E\u0445\u0440\u0430\u043D\u044F\u044E\u0442\u0441\u044F \u0432\u0441\u0435 \u0434\u0430\u0442\u044B \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u043E\u0433\u043E \u043F\u0435\u0440\u0438\u043E\u0434\u0430, \u0432\u043A\u043B\u044E\u0447\u0430\u044F \u043D\u0443\u043B\u0435\u0432\u044B\u0435 \u0434\u043D\u0438. \u0412 \u043A\u0432\u0430\u0440\u0442\u0430\u043B\u0435 \u0434\u043D\u0438 \u043E\u0431\u044A\u0435\u0434\u0438\u043D\u044F\u044E\u0442\u0441\u044F \u043F\u043E \u043D\u0435\u0434\u0435\u043B\u044F\u043C, \u0432 \u0433\u043E\u0434\u0443 \u2014 \u043F\u043E \u043C\u0435\u0441\u044F\u0446\u0430\u043C. \u041F\u043E\u0434\u043F\u0438\u0441\u0438 \u0434\u0430\u0442 \u0440\u0430\u0441\u043F\u043E\u043B\u043E\u0436\u0435\u043D\u044B \u0433\u043E\u0440\u0438\u0437\u043E\u043D\u0442\u0430\u043B\u044C\u043D\u043E \u0441 \u043F\u0440\u043E\u043C\u0435\u0436\u0443\u0442\u043A\u0430\u043C\u0438; \u0442\u043E\u0447\u043D\u044B\u0435 \u0434\u043D\u0435\u0432\u043D\u044B\u0435 \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B \u0432 \u0440\u0430\u0441\u043A\u0440\u044B\u0432\u0430\u044E\u0449\u0435\u0439\u0441\u044F \u0442\u0430\u0431\u043B\u0438\u0446\u0435."
+      "Week, Month, Quarter and Year cover the current calendar period. Overall statistics cover all time; exact values are in collapsed details. Closing old work credits its planned reporting date. Payments and subscriptions are excluded from work metrics.",
+      "\xAB\u041D\u0435\u0434\u0435\u043B\u044F\xBB, \xAB\u041C\u0435\u0441\u044F\u0446\xBB, \xAB\u041A\u0432\u0430\u0440\u0442\u0430\u043B\xBB \u0438 \xAB\u0413\u043E\u0434\xBB \u2014 \u0442\u0435\u043A\u0443\u0449\u0438\u0435 \u043A\u0430\u043B\u0435\u043D\u0434\u0430\u0440\u043D\u044B\u0435 \u043F\u0435\u0440\u0438\u043E\u0434\u044B. \u041E\u0431\u0449\u0430\u044F \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0430 \u043E\u0445\u0432\u0430\u0442\u044B\u0432\u0430\u0435\u0442 \u0432\u0441\u0451 \u0432\u0440\u0435\u043C\u044F; \u0442\u043E\u0447\u043D\u044B\u0435 \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B \u0432 \u0440\u0430\u0441\u043A\u0440\u044B\u0432\u0430\u044E\u0449\u0438\u0445\u0441\u044F \u043F\u043E\u0434\u0440\u043E\u0431\u043D\u043E\u0441\u0442\u044F\u0445. \u0417\u0430\u043A\u0440\u044B\u0442\u0438\u0435 \u0441\u0442\u0430\u0440\u043E\u0439 \u0437\u0430\u0434\u0430\u0447\u0438 \u0443\u0447\u0438\u0442\u044B\u0432\u0430\u0435\u0442\u0441\u044F \u043F\u043E \u0435\u0451 \u043F\u043B\u0430\u043D\u043E\u0432\u043E\u0439 \u043E\u0442\u0447\u0451\u0442\u043D\u043E\u0439 \u0434\u0430\u0442\u0435. \u041F\u043B\u0430\u0442\u0435\u0436\u0438 \u0438 \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0438 \u043D\u0435 \u0432\u0445\u043E\u0434\u044F\u0442 \u0432 \u043F\u043E\u043A\u0430\u0437\u0430\u0442\u0435\u043B\u0438 \u0434\u0435\u043B."
     ),
     t(
-      "Work statistics exclude payments and subscriptions. Expenses is for entering, editing and undoing payments, planning and subscription management. Financial statistics show totals, daily spending and project allocation without duplicating transaction lists. Actual spending uses the payment date. All currency charts remain visible; the currency selector applies only to the project breakdown. Currencies are never added together or converted.",
-      "\u0412 \u0440\u0430\u0437\u0434\u0435\u043B\u0435 \xAB\u0414\u0435\u043B\u0430\xBB \u043F\u043B\u0430\u0442\u0435\u0436\u0438 \u0438 \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0438 \u0438\u0441\u043A\u043B\u044E\u0447\u0435\u043D\u044B. \xAB\u0420\u0430\u0441\u0445\u043E\u0434\u044B\xBB \u2014 \u0432\u043D\u0435\u0441\u0435\u043D\u0438\u0435 \u0438 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0435 \u043E\u043F\u043B\u0430\u0442, \u043F\u043B\u0430\u043D \u0438 \u0443\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u0435 \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0430\u043C\u0438. \xAB\u0424\u0438\u043D\u0430\u043D\u0441\u044B\xBB \u2014 \u0438\u0442\u043E\u0433\u0438, \u0434\u0438\u043D\u0430\u043C\u0438\u043A\u0430 \u0438 \u0440\u0430\u0441\u043F\u0440\u0435\u0434\u0435\u043B\u0435\u043D\u0438\u0435 \u043F\u043E \u043F\u0440\u043E\u0435\u043A\u0442\u0430\u043C \u0431\u0435\u0437 \u043F\u043E\u0432\u0442\u043E\u0440\u0435\u043D\u0438\u044F \u0441\u043F\u0438\u0441\u043A\u043E\u0432 \u043E\u043F\u043B\u0430\u0442. \u0424\u0430\u043A\u0442\u0438\u0447\u0435\u0441\u043A\u0438\u0435 \u0442\u0440\u0430\u0442\u044B \u0443\u0447\u0438\u0442\u044B\u0432\u0430\u044E\u0442\u0441\u044F \u043F\u043E \u0434\u0430\u0442\u0435 \u043E\u043F\u043B\u0430\u0442\u044B. \u0413\u0440\u0430\u0444\u0438\u043A\u0438 \u0432\u0441\u0435\u0445 \u0432\u0430\u043B\u044E\u0442 \u0432\u0438\u0434\u043D\u044B \u043E\u0434\u043D\u043E\u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E; \u0432\u044B\u0431\u043E\u0440 \u0432\u0430\u043B\u044E\u0442\u044B \u043E\u0442\u043D\u043E\u0441\u0438\u0442\u0441\u044F \u0442\u043E\u043B\u044C\u043A\u043E \u043A \u0440\u0430\u0441\u043F\u0440\u0435\u0434\u0435\u043B\u0435\u043D\u0438\u044E \u043F\u043E \u043F\u0440\u043E\u0435\u043A\u0442\u0430\u043C. \u0420\u0430\u0437\u043D\u044B\u0435 \u0432\u0430\u043B\u044E\u0442\u044B \u043D\u0435 \u0441\u043A\u043B\u0430\u0434\u044B\u0432\u0430\u044E\u0442\u0441\u044F \u0438 \u043D\u0435 \u043A\u043E\u043D\u0432\u0435\u0440\u0442\u0438\u0440\u0443\u044E\u0442\u0441\u044F."
+      "Financial reports use actual payment dates. Each currency stays separate; currencies are never converted or summed.",
+      "\u0424\u0438\u043D\u0430\u043D\u0441\u043E\u0432\u044B\u0435 \u043E\u0442\u0447\u0451\u0442\u044B \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u044E\u0442 \u0444\u0430\u043A\u0442\u0438\u0447\u0435\u0441\u043A\u0438\u0435 \u0434\u0430\u0442\u044B \u043E\u043F\u043B\u0430\u0442\u044B. \u041A\u0430\u0436\u0434\u0430\u044F \u0432\u0430\u043B\u044E\u0442\u0430 \u043F\u043E\u043A\u0430\u0437\u0430\u043D\u0430 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E, \u0431\u0435\u0437 \u043A\u043E\u043D\u0432\u0435\u0440\u0442\u0430\u0446\u0438\u0438 \u0438 \u0441\u043B\u043E\u0436\u0435\u043D\u0438\u044F \u0440\u0430\u0437\u043D\u044B\u0445 \u0432\u0430\u043B\u044E\u0442."
     )
   ]);
   section(t("Budgets", "\u0411\u044E\u0434\u0436\u0435\u0442\u044B"), [
     t(
-      "Set an optional monthly budget and currency when editing an area or project, or choose a scope in Statistics \u2192 Finances \u2192 Budgets. An empty limit disables the budget; zero remains a valid limit. The selected current calendar month uses that limit, a quarter uses three monthly limits, and a year uses twelve. A week is prorated by the actual number of days in each month. Spent uses actual payment dates; Planned includes outstanding payment tasks and unrecorded subscription charges in that period. Remaining is the limit minus spent; After planned payments also subtracts the forecast. Area budgets include all linked projects. Area and project limits are independent and are never summed into a shared total. Other currencies and missing prices are flagged; no currency conversion occurs. The operational payment lists remain in Expenses.",
-      "\u041C\u0435\u0441\u044F\u0447\u043D\u044B\u0439 \u0431\u044E\u0434\u0436\u0435\u0442 \u0438 \u0432\u0430\u043B\u044E\u0442\u0443 \u043C\u043E\u0436\u043D\u043E \u0437\u0430\u0434\u0430\u0442\u044C \u0432 \u0444\u043E\u0440\u043C\u0435 \u0441\u0444\u0435\u0440\u044B \u0438\u043B\u0438 \u043F\u0440\u043E\u0435\u043A\u0442\u0430 \u043B\u0438\u0431\u043E \u0432\u044B\u0431\u0440\u0430\u0442\u044C \u043E\u0431\u044A\u0435\u043A\u0442 \u0432 \xAB\u0421\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0430 \u2192 \u0424\u0438\u043D\u0430\u043D\u0441\u044B \u2192 \u0411\u044E\u0434\u0436\u0435\u0442\u044B\xBB. \u041F\u0443\u0441\u0442\u0430\u044F \u0441\u0443\u043C\u043C\u0430 \u043E\u0442\u043A\u043B\u044E\u0447\u0430\u0435\u0442 \u0431\u044E\u0434\u0436\u0435\u0442; \u043D\u043E\u043B\u044C \u2014 \u0434\u043E\u043F\u0443\u0441\u0442\u0438\u043C\u044B\u0439 \u043B\u0438\u043C\u0438\u0442. \u0422\u0435\u043A\u0443\u0449\u0438\u0439 \u043C\u0435\u0441\u044F\u0446 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0435\u0442 \u044D\u0442\u043E\u0442 \u043B\u0438\u043C\u0438\u0442, \u043A\u0432\u0430\u0440\u0442\u0430\u043B \u2014 \u0442\u0440\u0438 \u043C\u0435\u0441\u044F\u0447\u043D\u044B\u0445 \u043B\u0438\u043C\u0438\u0442\u0430, \u0433\u043E\u0434 \u2014 \u0434\u0432\u0435\u043D\u0430\u0434\u0446\u0430\u0442\u044C. \u041B\u0438\u043C\u0438\u0442 \u043D\u0435\u0434\u0435\u043B\u0438 \u0440\u0430\u0441\u0441\u0447\u0438\u0442\u044B\u0432\u0430\u0435\u0442\u0441\u044F \u043F\u0440\u043E\u043F\u043E\u0440\u0446\u0438\u043E\u043D\u0430\u043B\u044C\u043D\u043E \u0447\u0438\u0441\u043B\u0443 \u0434\u043D\u0435\u0439 \u0432 \u0441\u043E\u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0443\u044E\u0449\u0438\u0445 \u043C\u0435\u0441\u044F\u0446\u0430\u0445. \u0424\u0430\u043A\u0442 \u043E\u0442\u043D\u043E\u0441\u0438\u0442\u0441\u044F \u043A \u0434\u0430\u0442\u0435 \u043E\u043F\u043B\u0430\u0442\u044B; \u043F\u043B\u0430\u043D \u0432\u043A\u043B\u044E\u0447\u0430\u0435\u0442 \u043E\u0442\u043A\u0440\u044B\u0442\u044B\u0435 \u043F\u043B\u0430\u0442\u0435\u0436\u0438 \u0438 \u0435\u0449\u0451 \u043D\u0435 \u0437\u0430\u043F\u0438\u0441\u0430\u043D\u043D\u044B\u0435 \u0441\u043F\u0438\u0441\u0430\u043D\u0438\u044F \u043F\u043E\u0434\u043F\u0438\u0441\u043E\u043A \u0437\u0430 \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u044B\u0439 \u043F\u0435\u0440\u0438\u043E\u0434. \u041E\u0441\u0442\u0430\u0442\u043E\u043A \u2014 \u043B\u0438\u043C\u0438\u0442 \u043C\u0438\u043D\u0443\u0441 \u0444\u0430\u043A\u0442; \xAB\u041F\u043E\u0441\u043B\u0435 \u0437\u0430\u043F\u043B\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0445 \u043E\u043F\u043B\u0430\u0442\xBB \u0442\u0430\u043A\u0436\u0435 \u0432\u044B\u0447\u0438\u0442\u0430\u0435\u0442 \u043F\u043B\u0430\u043D. \u0412 \u0431\u044E\u0434\u0436\u0435\u0442 \u0441\u0444\u0435\u0440\u044B \u0432\u0445\u043E\u0434\u044F\u0442 \u0432\u0441\u0435 \u0441\u0432\u044F\u0437\u0430\u043D\u043D\u044B\u0435 \u043F\u0440\u043E\u0435\u043A\u0442\u044B. \u041B\u0438\u043C\u0438\u0442\u044B \u0441\u0444\u0435\u0440\u044B \u0438 \u043F\u0440\u043E\u0435\u043A\u0442\u0430 \u043D\u0435\u0437\u0430\u0432\u0438\u0441\u0438\u043C\u044B \u0438 \u043D\u0435 \u0441\u043A\u043B\u0430\u0434\u044B\u0432\u0430\u044E\u0442\u0441\u044F \u0432 \u043E\u0431\u0449\u0438\u0439 \u0438\u0442\u043E\u0433. \u0414\u0440\u0443\u0433\u0438\u0435 \u0432\u0430\u043B\u044E\u0442\u044B \u0438 \u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0435 \u0441\u0443\u043C\u043C\u044B \u043E\u0442\u043C\u0435\u0447\u0435\u043D\u044B \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E, \u043A\u043E\u043D\u0432\u0435\u0440\u0442\u0430\u0446\u0438\u0438 \u043D\u0435\u0442. \u0421\u043F\u0438\u0441\u043A\u0438 \u043E\u043F\u043B\u0430\u0442 \u043E\u0441\u0442\u0430\u044E\u0442\u0441\u044F \u0432 \xAB\u0420\u0430\u0441\u0445\u043E\u0434\u0430\u0445\xBB."
+      "Set a monthly limit and currency in an area or project, or in financial statistics. Empty disables the limit; zero is valid. Remaining subtracts spending; After planned payments also subtracts the forecast. Area and project budgets stay independent.",
+      "\u0417\u0430\u0434\u0430\u0439\u0442\u0435 \u043C\u0435\u0441\u044F\u0447\u043D\u044B\u0439 \u043B\u0438\u043C\u0438\u0442 \u0438 \u0432\u0430\u043B\u044E\u0442\u0443 \u0432 \u0441\u0444\u0435\u0440\u0435, \u043F\u0440\u043E\u0435\u043A\u0442\u0435 \u0438\u043B\u0438 \u0444\u0438\u043D\u0430\u043D\u0441\u043E\u0432\u043E\u0439 \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0435. \u041F\u0443\u0441\u0442\u043E\u0439 \u043B\u0438\u043C\u0438\u0442 \u043E\u0442\u043A\u043B\u044E\u0447\u0451\u043D; \u043D\u043E\u043B\u044C \u0434\u043E\u043F\u0443\u0441\u0442\u0438\u043C. \u041E\u0441\u0442\u0430\u0442\u043E\u043A \u0443\u0447\u0438\u0442\u044B\u0432\u0430\u0435\u0442 \u0440\u0430\u0441\u0445\u043E\u0434\u044B, \xAB\u041F\u043E\u0441\u043B\u0435 \u0437\u0430\u043F\u043B\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0445 \u043E\u043F\u043B\u0430\u0442\xBB \u2014 \u0435\u0449\u0451 \u0438 \u043F\u0440\u043E\u0433\u043D\u043E\u0437. \u0411\u044E\u0434\u0436\u0435\u0442\u044B \u0441\u0444\u0435\u0440 \u0438 \u043F\u0440\u043E\u0435\u043A\u0442\u043E\u0432 \u043D\u0435\u0437\u0430\u0432\u0438\u0441\u0438\u043C\u044B."
     )
   ]);
   section(w.subscriptions, [
     t(
-      "Expenses has two sections: Payments for upcoming payments and paid expenses, and Subscriptions for recurring cost settings. Payments to review groups overdue, undated and unsuccessful payments. The subscription catalog and monthly cost estimate do not depend on the report period. Add expense and Add subscription open their respective sections.",
-      "\u0412 \xAB\u0420\u0430\u0441\u0445\u043E\u0434\u0430\u0445\xBB \u0434\u0432\u0430 \u0440\u0430\u0437\u0434\u0435\u043B\u0430: \xAB\u041F\u043B\u0430\u0442\u0435\u0436\u0438\xBB \u2014 \u043F\u0440\u0435\u0434\u0441\u0442\u043E\u044F\u0449\u0438\u0435 \u043F\u043B\u0430\u0442\u0435\u0436\u0438 \u0438 \u043E\u043F\u043B\u0430\u0447\u0435\u043D\u043D\u044B\u0435 \u0440\u0430\u0441\u0445\u043E\u0434\u044B; \xAB\u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0438\xBB \u2014 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u0440\u0435\u0433\u0443\u043B\u044F\u0440\u043D\u044B\u0445 \u0441\u043F\u0438\u0441\u0430\u043D\u0438\u0439. \u0412 \u0431\u043B\u043E\u043A\u0435 \xAB\u0422\u0440\u0435\u0431\u0443\u044E\u0442 \u0432\u043D\u0438\u043C\u0430\u043D\u0438\u044F\xBB \u0441\u043E\u0431\u0440\u0430\u043D\u044B \u043F\u0440\u043E\u0441\u0440\u043E\u0447\u0435\u043D\u043D\u044B\u0435 \u043F\u043B\u0430\u0442\u0435\u0436\u0438, \u0437\u0430\u043F\u0438\u0441\u0438 \u0431\u0435\u0437 \u0434\u0430\u0442\u044B \u0438 \u043D\u0435\u043E\u043F\u043B\u0430\u0447\u0435\u043D\u043D\u044B\u0435 \u0437\u0430\u0434\u0430\u0447\u0438. \u0421\u043F\u0438\u0441\u043E\u043A \u043F\u043E\u0434\u043F\u0438\u0441\u043E\u043A \u0438 \u0438\u0445 \u0441\u0442\u043E\u0438\u043C\u043E\u0441\u0442\u044C \u0432 \u043C\u0435\u0441\u044F\u0446 \u043D\u0435 \u0437\u0430\u0432\u0438\u0441\u044F\u0442 \u043E\u0442 \u043F\u0435\u0440\u0438\u043E\u0434\u0430 \u043E\u0442\u0447\u0451\u0442\u0430. \xAB\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0440\u0430\u0441\u0445\u043E\u0434\xBB \u0438 \xAB\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0443\xBB \u043E\u0442\u043A\u0440\u044B\u0432\u0430\u044E\u0442 \u0441\u043E\u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0443\u044E\u0449\u0438\u0439 \u0440\u0430\u0437\u0434\u0435\u043B."
-    ),
-    w.expensesHelp,
-    w.paymentHelp,
-    w.chargeHelp,
-    w.subscriptionHelp,
-    w.subscriptionCatalogHelp,
-    t(
-      "Active subscriptions appear in a separate payment section at the bottom of each calendar day. First payment anchors a monthly or yearly forecast; missing month days use the last day without changing the anchor. Future dates show the full billing amount, not the monthly average. Cancelled or undated subscriptions have no calendar forecast. Subscriptions remain excluded from work lists, boards, task progress and time statistics. The cards show the next payment date; cancellation and resumption support Undo.",
-      "\u0410\u043A\u0442\u0438\u0432\u043D\u044B\u0435 \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0438 \u043F\u043E\u043A\u0430\u0437\u0430\u043D\u044B \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E \u0432\u043D\u0438\u0437\u0443 \u043A\u0430\u0436\u0434\u043E\u0433\u043E \u0434\u043D\u044F \u043A\u0430\u043B\u0435\u043D\u0434\u0430\u0440\u044F. \u0414\u0430\u0442\u0430 \u043F\u0435\u0440\u0432\u043E\u0433\u043E \u043F\u043B\u0430\u0442\u0435\u0436\u0430 \u0437\u0430\u0434\u0430\u0451\u0442 \u0435\u0436\u0435\u043C\u0435\u0441\u044F\u0447\u043D\u044B\u0439 \u0438\u043B\u0438 \u0435\u0436\u0435\u0433\u043E\u0434\u043D\u044B\u0439 \u043F\u0440\u043E\u0433\u043D\u043E\u0437. \u0415\u0441\u043B\u0438 \u043D\u0443\u0436\u043D\u043E\u0433\u043E \u0447\u0438\u0441\u043B\u0430 \u043D\u0435\u0442, \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0435\u0442\u0441\u044F \u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0438\u0439 \u0434\u0435\u043D\u044C \u043C\u0435\u0441\u044F\u0446\u0430 \u0431\u0435\u0437 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F \u0438\u0441\u0445\u043E\u0434\u043D\u043E\u0439 \u0434\u0430\u0442\u044B. \u0411\u0443\u0434\u0443\u0449\u0438\u0435 \u0441\u043F\u0438\u0441\u0430\u043D\u0438\u044F \u043F\u043E\u043A\u0430\u0437\u044B\u0432\u0430\u044E\u0442 \u043F\u043E\u043B\u043D\u0443\u044E \u0441\u0443\u043C\u043C\u0443 \u043F\u043B\u0430\u0442\u0435\u0436\u0430, \u0430 \u043D\u0435 \u0441\u0440\u0435\u0434\u043D\u0435\u0435 \u0437\u0430 \u043C\u0435\u0441\u044F\u0446. \u0423 \u043E\u0442\u043C\u0435\u043D\u0451\u043D\u043D\u044B\u0445 \u043F\u043E\u0434\u043F\u0438\u0441\u043E\u043A \u0438 \u043F\u043E\u0434\u043F\u0438\u0441\u043E\u043A \u0431\u0435\u0437 \u0434\u0430\u0442\u044B \u043F\u0440\u043E\u0433\u043D\u043E\u0437\u0430 \u043D\u0435\u0442. \u041E\u043D\u0438 \u043D\u0435 \u0432\u0445\u043E\u0434\u044F\u0442 \u0432 \u0441\u043F\u0438\u0441\u043A\u0438 \u0437\u0430\u0434\u0430\u0447, \u0434\u043E\u0441\u043A\u0438, \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441 \u0438 \u0443\u0447\u0451\u0442 \u0432\u0440\u0435\u043C\u0435\u043D\u0438. \u041D\u0430 \u043A\u0430\u0440\u0442\u043E\u0447\u043A\u0435 \u0432\u0438\u0434\u043D\u0430 \u0434\u0430\u0442\u0430 \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0435\u0433\u043E \u043F\u043B\u0430\u0442\u0435\u0436\u0430; \u043E\u0442\u043C\u0435\u043D\u0443 \u0438 \u0432\u043E\u0437\u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u0435 \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0438 \u043C\u043E\u0436\u043D\u043E \u043E\u0442\u043C\u0435\u043D\u0438\u0442\u044C."
+      "Expenses contains Payments and Subscriptions. Record a payment to update paid history. Subscription settings define recurring forecasts; cancelled or undated subscriptions have no calendar forecast. Annual charges show the full payment, while monthly cost uses the yearly amount divided by twelve.",
+      "\u0412 \xAB\u0420\u0430\u0441\u0445\u043E\u0434\u0430\u0445\xBB \u0435\u0441\u0442\u044C \xAB\u041F\u043B\u0430\u0442\u0435\u0436\u0438\xBB \u0438 \xAB\u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0438\xBB. \u0417\u0430\u043F\u0438\u0448\u0438\u0442\u0435 \u043E\u043F\u043B\u0430\u0442\u0443 \u0434\u043B\u044F \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u0438\u044F \u0432 \u0438\u0441\u0442\u043E\u0440\u0438\u044E. \u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0438 \u0437\u0430\u0434\u0430\u044E\u0442 \u043F\u0440\u043E\u0433\u043D\u043E\u0437 \u0441\u043F\u0438\u0441\u0430\u043D\u0438\u0439; \u043E\u0442\u043C\u0435\u043D\u0451\u043D\u043D\u044B\u0435 \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0438 \u0438 \u0437\u0430\u043F\u0438\u0441\u0438 \u0431\u0435\u0437 \u0434\u0430\u0442\u044B \u0432 \u043F\u0440\u043E\u0433\u043D\u043E\u0437 \u043D\u0435 \u0432\u0445\u043E\u0434\u044F\u0442. \u0413\u043E\u0434\u043E\u0432\u043E\u0435 \u0441\u043F\u0438\u0441\u0430\u043D\u0438\u0435 \u043F\u043E\u043A\u0430\u0437\u0430\u043D\u043E \u043F\u043E\u043B\u043D\u043E\u0441\u0442\u044C\u044E, \u0441\u0442\u043E\u0438\u043C\u043E\u0441\u0442\u044C \u0432 \u043C\u0435\u0441\u044F\u0446 \u2014 \u043A\u0430\u043A \u0433\u043E\u0434\u043E\u0432\u0430\u044F \u0441\u0443\u043C\u043C\u0430, \u0434\u0435\u043B\u0451\u043D\u043D\u0430\u044F \u043D\u0430 \u0434\u0432\u0435\u043D\u0430\u0434\u0446\u0430\u0442\u044C."
     )
   ]);
   section(t("Data and legacy import", "\u0414\u0430\u043D\u043D\u044B\u0435 \u0438 \u0438\u043C\u043F\u043E\u0440\u0442"), [
     t(
-      "Data lives in Obsidian Markdown notes. New areas, projects and tasks default to Planner/Areas, Planner/Projects and Planner/Tasks; settings choose the folder and language. Dataview and TaskNotes are unnecessary. The plugin works locally without an account or telemetry. Collaboration depends on your vault and synchronization.",
-      "\u0414\u0430\u043D\u043D\u044B\u0435 \u0445\u0440\u0430\u043D\u044F\u0442\u0441\u044F \u0432 \u043E\u0431\u044B\u0447\u043D\u044B\u0445 Markdown-\u0437\u0430\u043C\u0435\u0442\u043A\u0430\u0445 Obsidian. \u041F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E \u043D\u043E\u0432\u044B\u0435 \u0441\u0444\u0435\u0440\u044B, \u043F\u0440\u043E\u0435\u043A\u0442\u044B \u0438 \u0437\u0430\u0434\u0430\u0447\u0438 \u0441\u043E\u0437\u0434\u0430\u044E\u0442\u0441\u044F \u0432 Planner/Areas, Planner/Projects \u0438 Planner/Tasks. \u041F\u0430\u043F\u043A\u0430 \u0438 \u044F\u0437\u044B\u043A \u043C\u0435\u043D\u044F\u044E\u0442\u0441\u044F \u0432 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430\u0445. Dataview \u0438 TaskNotes \u043D\u0435 \u043D\u0443\u0436\u043D\u044B. \u041F\u043B\u0430\u0433\u0438\u043D \u0440\u0430\u0431\u043E\u0442\u0430\u0435\u0442 \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u043E, \u0431\u0435\u0437 \u0430\u043A\u043A\u0430\u0443\u043D\u0442\u0430 \u0438 \u0442\u0435\u043B\u0435\u043C\u0435\u0442\u0440\u0438\u0438. \u0421\u043E\u0432\u043C\u0435\u0441\u0442\u043D\u0430\u044F \u0440\u0430\u0431\u043E\u0442\u0430 \u0437\u0430\u0432\u0438\u0441\u0438\u0442 \u043E\u0442 \u0441\u0438\u043D\u0445\u0440\u043E\u043D\u0438\u0437\u0430\u0446\u0438\u0438 \u0432\u0430\u0448\u0435\u0433\u043E \u0445\u0440\u0430\u043D\u0438\u043B\u0438\u0449\u0430."
-    ),
-    w.importText
+      "Notes stay in your vault; new notes default to Planner. Settings choose the folder and language. The plugin works offline without accounts or telemetry. Legacy import copies supported notes without changing originals; vault sync is managed by Obsidian.",
+      "\u0417\u0430\u043C\u0435\u0442\u043A\u0438 \u043E\u0441\u0442\u0430\u044E\u0442\u0441\u044F \u0432 \u0445\u0440\u0430\u043D\u0438\u043B\u0438\u0449\u0435; \u043D\u043E\u0432\u044B\u0435 \u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E \u0441\u043E\u0437\u0434\u0430\u044E\u0442\u0441\u044F \u0432 Planner. \u041F\u0430\u043F\u043A\u0430 \u0438 \u044F\u0437\u044B\u043A \u043C\u0435\u043D\u044F\u044E\u0442\u0441\u044F \u0432 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430\u0445. \u041F\u043B\u0430\u0433\u0438\u043D \u0440\u0430\u0431\u043E\u0442\u0430\u0435\u0442 \u043E\u0444\u043B\u0430\u0439\u043D, \u0431\u0435\u0437 \u0430\u043A\u043A\u0430\u0443\u043D\u0442\u0430 \u0438 \u0442\u0435\u043B\u0435\u043C\u0435\u0442\u0440\u0438\u0438. \u0418\u043C\u043F\u043E\u0440\u0442 \u043A\u043E\u043F\u0438\u0440\u0443\u0435\u0442 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u043C\u044B\u0435 \u0441\u0442\u0430\u0440\u044B\u0435 \u0437\u0430\u043C\u0435\u0442\u043A\u0438, \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u044F \u043E\u0440\u0438\u0433\u0438\u043D\u0430\u043B\u044B; \u0441\u0438\u043D\u0445\u0440\u043E\u043D\u0438\u0437\u0430\u0446\u0438\u0435\u0439 \u0445\u0440\u0430\u043D\u0438\u043B\u0438\u0449\u0430 \u0443\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u0442 Obsidian."
+    )
   ]);
   section(t("About", "\u041E \u043F\u043B\u0430\u0433\u0438\u043D\u0435"), [
     `${t("Author", "\u0410\u0432\u0442\u043E\u0440")}: ${author}.`,
@@ -7222,6 +7440,331 @@ function manual(parent, language, author, version) {
 
 // src/ui/modals.ts
 var import_obsidian6 = require("obsidian");
+
+// src/ui/form-draft.ts
+function keepFormDraft(plugin, form, key, baseline, controls, w, refreshed = () => void 0) {
+  const values = () => Object.fromEntries(Object.entries(controls).map(([name, control]) => [name, control.value]));
+  const pristine = JSON.stringify(values());
+  const saved = plugin.settings.formDrafts?.[key];
+  const banner = el(form, "div", "tp-draft-banner");
+  banner.hidden = true;
+  form.prepend(banner);
+  let finished = false;
+  let pendingReview = !!saved && saved.baseline !== baseline;
+  const clear = () => {
+    if (plugin.settings.formDrafts) delete plugin.settings.formDrafts[key];
+    plugin.scheduleSettings();
+  };
+  const capture = () => {
+    if (finished) return;
+    const current = values();
+    if (JSON.stringify(current) === pristine) {
+      if (!pendingReview) clear();
+      return;
+    }
+    const entries = Object.entries(plugin.settings.formDrafts || {}).filter(([name]) => name !== key).slice(-19);
+    plugin.settings.formDrafts = Object.fromEntries([
+      ...entries,
+      [
+        key,
+        {
+          baseline,
+          values: current,
+          dateFormat: plugin.settings.dateFormat,
+          savedOn: (/* @__PURE__ */ new Date()).toISOString()
+        }
+      ]
+    ]);
+    plugin.scheduleSettings();
+  };
+  const restore = () => {
+    if (!saved) return;
+    pendingReview = false;
+    for (const [name, value] of Object.entries(saved.values)) {
+      const control = controls[name];
+      if (!control) continue;
+      const restored = control.classList.contains("tp-date") && saved.dateFormat !== plugin.settings.dateFormat ? formatDate(parseDate(value, saved.dateFormat), plugin.settings.dateFormat) || value : value;
+      if (control.tagName === "SELECT") {
+        const select2 = control;
+        if (![...select2.options].some((option) => option.value === restored)) continue;
+        setSelectValue(select2, restored);
+      } else control.value = restored;
+    }
+    refreshed();
+    banner.replaceChildren();
+    el(banner, "span", "", w.draftRestored);
+    button(
+      banner,
+      w.discardDraft,
+      () => {
+        finished = true;
+        clear();
+        banner.hidden = true;
+        const initial = JSON.parse(pristine);
+        for (const [name, value] of Object.entries(initial)) {
+          const control = controls[name];
+          if (control.tagName === "SELECT") setSelectValue(control, value);
+          else control.value = value;
+        }
+        refreshed();
+        finished = false;
+      },
+      "tp-text-button"
+    );
+    banner.hidden = false;
+  };
+  if (saved) {
+    if (saved.baseline === baseline) restore();
+    else {
+      banner.hidden = false;
+      el(banner, "span", "", w.draftChanged);
+      button(banner, w.restoreDraft, restore, "tp-text-button");
+      button(
+        banner,
+        w.discardDraft,
+        () => {
+          clear();
+          banner.hidden = true;
+        },
+        "tp-text-button"
+      );
+    }
+  }
+  form.addEventListener("input", capture);
+  form.addEventListener("change", capture);
+  return {
+    capture,
+    commit: () => {
+      finished = true;
+      clear();
+    }
+  };
+}
+function taskDraftBaseline(task, occurrence = "") {
+  return JSON.stringify({
+    path: task.path,
+    title: task.title,
+    description: task.description,
+    result: task.result || "",
+    kind: task.kind,
+    status: task.status,
+    project: task.project,
+    scheduled: task.scheduled,
+    scheduledTime: task.scheduledTime,
+    due: task.due,
+    recurrence: task.recurrence,
+    seriesEnd: task.seriesEnd,
+    priority: task.priority,
+    workDates: task.workDates,
+    plannedMinutes: task.plannedMinutes,
+    minutes: task.minutes,
+    amount: task.amount,
+    currency: task.currency,
+    billingPeriod: task.billingPeriod,
+    subscriptionActive: task.subscriptionActive,
+    resolvedOn: task.resolvedOn,
+    occurrence: task.occurrences[occurrence]
+  });
+}
+
+// src/ui/repeat-editor.ts
+var DAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
+function simpleSchedule(rule) {
+  const pairs = rule.split(";").map((part) => part.split("="));
+  if (pairs.some((pair) => pair.length !== 2 || !pair[0] || !pair[1]) || new Set(pairs.map((p) => p[0])).size !== pairs.length)
+    return;
+  const fields = new Map(pairs);
+  if ([...fields.keys()].some((key) => !["FREQ", "INTERVAL", "BYDAY", "COUNT", "UNTIL"].includes(key)))
+    return;
+  const frequency = fields.get("FREQ") || "WEEKLY";
+  const days = fields.get("BYDAY")?.split(",") || [];
+  if (!["DAILY", "WEEKLY", "MONTHLY", "YEARLY"].includes(frequency) || days.length && (frequency !== "WEEKLY" || days.some((d) => !DAYS.includes(d))))
+    return;
+  const interval = Number(fields.get("INTERVAL") || 1);
+  const count = fields.get("COUNT") || "";
+  if (!Number.isInteger(interval) || interval < 1 || interval > 1e5 || count && (!/^\d+$/.test(count) || Number(count) < 1 || Number(count) > 1e5))
+    return;
+  return { frequency, interval, days, count };
+}
+function scheduleRule(schedule, original = "") {
+  if (!Number.isInteger(schedule.interval) || schedule.interval < 1 || schedule.interval > 1e5)
+    throw new Error("INTERVAL must be a positive integer no greater than 100000.");
+  const parts = [`FREQ=${schedule.frequency}`];
+  if (schedule.interval !== 1) parts.push(`INTERVAL=${schedule.interval}`);
+  if (schedule.frequency === "WEEKLY" && schedule.days.length)
+    parts.push(`BYDAY=${DAYS.filter((d) => schedule.days.includes(d)).join(",")}`);
+  if (schedule.count) parts.push(`COUNT=${schedule.count}`);
+  const until = original.split(";").find((part) => part.startsWith("UNTIL="));
+  if (until) parts.push(until);
+  const result = parts.join(";");
+  return [...result.split(";")].sort().join(";") === [...original.split(";")].sort().join(";") ? original : result;
+}
+function repeatEditor(parent, rule, w, changed) {
+  const initial = simpleSchedule(rule) || { frequency: "WEEKLY", interval: 1, days: [], count: "" };
+  const box = el(parent, "div", "tp-repeat-editor");
+  const grid = el(box, "div", "tp-form-grid");
+  const interval = input(field(grid, w.repeatEvery), "number", String(initial.interval));
+  interval.dataset.field = "repeatInterval";
+  interval.min = "1";
+  interval.max = "100000";
+  interval.step = "1";
+  const frequency = select(
+    field(grid, w.repeatFrequency),
+    [
+      ["DAILY", w.daily],
+      ["WEEKLY", w.weekly],
+      ["MONTHLY", w.monthly],
+      ["YEARLY", w.yearly]
+    ],
+    initial.frequency
+  );
+  frequency.dataset.field = "repeatFrequency";
+  const weekdays = el(box, "fieldset", "tp-repeat-days");
+  el(weekdays, "legend", "", w.repeatDays);
+  const daysState = input(box, "hidden", JSON.stringify(initial.days));
+  const checks = DAYS.map((code, index) => {
+    const label = el(weekdays, "label");
+    const check = input(label, "checkbox");
+    check.value = code;
+    check.checked = initial.days.includes(code);
+    el(label, "span", "", w.repeatDayLabels.split(",")[index]);
+    return check;
+  });
+  const count = input(field(box, w.repeatCount), "number", initial.count);
+  count.dataset.field = "repeatCount";
+  count.min = "1";
+  count.max = "100000";
+  count.step = "1";
+  const update = () => {
+    weekdays.hidden = frequency.value !== "WEEKLY";
+    daysState.value = JSON.stringify(
+      checks.filter((check) => check.checked).map((check) => check.value)
+    );
+    changed();
+  };
+  box.addEventListener("change", update);
+  interval.addEventListener("input", changed);
+  count.addEventListener("input", changed);
+  weekdays.hidden = frequency.value !== "WEEKLY";
+  return {
+    box,
+    controls: {
+      repeatInterval: interval,
+      repeatFrequency: frequency,
+      repeatCount: count,
+      repeatDays: daysState
+    },
+    refresh: () => {
+      let days;
+      try {
+        days = JSON.parse(daysState.value);
+      } catch {
+        days = [];
+      }
+      for (const check of checks) check.checked = Array.isArray(days) && days.includes(check.value);
+      weekdays.hidden = frequency.value !== "WEEKLY";
+    },
+    value: () => scheduleRule(
+      {
+        frequency: frequency.value,
+        interval: Number(interval.value),
+        days: checks.filter((c) => c.checked).map((c) => c.value),
+        count: count.value
+      },
+      rule
+    )
+  };
+}
+function repeatPreview(rule, anchor) {
+  return makeRule(rule, anchor).all((_date, index) => index < 5).map((date) => date.toISOString().slice(0, 10));
+}
+
+// src/ui/work-days.ts
+function workDaysEditor(parent, initial, date, due, planned, repeat2, w, format, language) {
+  const box = el(parent, "div", "tp-work-dates");
+  const state = input(box, "hidden", JSON.stringify(initial));
+  state.dataset.field = "workDates";
+  const read = () => {
+    let raw;
+    try {
+      raw = JSON.parse(state.value || "[]");
+    } catch {
+      return [];
+    }
+    return Array.isArray(raw) ? [
+      ...new Set(
+        raw.filter(
+          (item) => typeof item === "string" && dateKey(item) === item
+        )
+      )
+    ].sort() : [];
+  };
+  const entry = el(box, "div", "tp-work-date-entry");
+  const pick = dateInput(field(entry, w.workDates), "", format, language);
+  const list = el(box, "div", "tp-work-date-list");
+  const distribution = el(box, "p", "tp-muted tp-work-distribution");
+  const error = el(box, "p", "tp-field-error");
+  error.setAttribute("role", "status");
+  error.hidden = true;
+  const refresh = () => {
+    box.hidden = !!repeat2.value;
+    pick.disabled = !!repeat2.value;
+    list.replaceChildren();
+    const dates = read();
+    for (const value of dates) {
+      const chip = button(
+        list,
+        formatDate(value, format),
+        () => {
+          state.value = JSON.stringify(read().filter((d) => d !== value));
+          refresh();
+          state.dispatchEvent(
+            new state.ownerDocument.defaultView.Event("change", { bubbles: true })
+          );
+        },
+        "tp-filter-chip"
+      );
+      el(chip, "span", "", "\xD7").setAttribute("aria-hidden", "true");
+      chip.setAttribute("aria-label", `${w.remove}: ${formatDate(value, format)}`);
+    }
+    const primary = parseDate(date.value, format);
+    const days = [...new Set([primary, ...dates].filter(Boolean))].sort();
+    const minutes = Math.max(0, Math.round(Number(planned.value) || 0));
+    distribution.hidden = !minutes || !days.length;
+    distribution.textContent = `${w.workDistribution}: ` + days.map(
+      (d, i) => `${formatDate(d, format)} \xB7 ${Math.floor(minutes / days.length) + (i < minutes % days.length ? 1 : 0)} ${w.minuteUnit}`
+    ).join("; ");
+    error.hidden = true;
+  };
+  const add = button(
+    entry,
+    "+",
+    () => {
+      const value = parseDate(pick.value, format);
+      const end = parseDate(due.value, format);
+      const dates = read();
+      if (!value || dates.includes(value) || value === parseDate(date.value, format) || end && value > end || dates.length >= 1e3) {
+        error.textContent = w.invalidWorkDate;
+        error.hidden = false;
+        return;
+      }
+      state.value = JSON.stringify([...dates, value].sort());
+      pick.value = "";
+      refresh();
+      state.dispatchEvent(new state.ownerDocument.defaultView.Event("change", { bubbles: true }));
+    },
+    "tp-work-date-add"
+  );
+  add.setAttribute("aria-label", w.addWorkDate);
+  add.title = w.addWorkDate;
+  for (const control of [date, due, planned, repeat2, state])
+    control.addEventListener("change", refresh);
+  planned.addEventListener("input", refresh);
+  refresh();
+  return { box, state, value: read, refresh };
+}
+
+// src/ui/modals.ts
 var BaseModal = class extends import_obsidian6.Modal {
   constructor(plugin) {
     super(plugin.app);
@@ -7229,30 +7772,56 @@ var BaseModal = class extends import_obsidian6.Modal {
     this.w = words(plugin.settings.language);
   }
   w;
+  draft;
+  formError;
   onOpen() {
     this.contentEl.classList.add("tp-modal");
     this.contentEl.lang = this.plugin.settings.language;
-    const grow = () => {
-      for (const area of this.contentEl.querySelectorAll("textarea")) {
-        area.setCssStyles({ height: "auto" });
-        area.setCssStyles({ height: `${Math.max(96, area.scrollHeight + 2)}px` });
-      }
+    const grow = (areas) => {
+      const visible = areas.filter((area) => area.getClientRects().length > 0);
+      for (const area of visible) area.setCssStyles({ height: "auto" });
+      const heights = visible.map((area) => Math.max(96, area.scrollHeight + 2));
+      visible.forEach((area, index) => area.setCssStyles({ height: `${heights[index]}px` }));
     };
-    this.contentEl.addEventListener("input", grow);
-    this.contentEl.ownerDocument.defaultView?.queueMicrotask(grow);
+    const growAll = () => grow([...this.contentEl.querySelectorAll("textarea")]);
+    this.contentEl.addEventListener("input", (event) => {
+      const target = event.target;
+      if (target.tagName === "TEXTAREA") grow([target]);
+    });
+    this.contentEl.addEventListener("toggle", growAll, true);
+    this.contentEl.addEventListener(
+      "invalid",
+      (event) => {
+        let parent = event.target.parentElement;
+        while (parent && parent !== this.contentEl) {
+          if (parent.tagName === "DETAILS") parent.open = true;
+          parent = parent.parentElement;
+        }
+      },
+      true
+    );
+    this.contentEl.ownerDocument.defaultView?.queueMicrotask(growAll);
     this.contentEl.style.setProperty(
       "--tp-ui-scale",
       String(this.plugin.normalizeUiScale(this.plugin.settings.uiScalePercent) / 100)
     );
   }
   onClose() {
+    this.draft?.capture();
     this.contentEl.replaceChildren();
   }
   async run(fn, close = true) {
     try {
       await fn();
-      if (close) this.close();
+      if (close) {
+        this.draft?.commit();
+        this.close();
+      }
     } catch (e) {
+      this.draft?.capture();
+      this.formError ??= el(this.contentEl, "p", "tp-form-error");
+      this.formError.setAttribute("role", "alert");
+      this.formError.textContent = `${this.w.saveError} ${messageText(e instanceof Error ? e.message : String(e), this.plugin.settings.language)}`;
       new import_obsidian6.Notice(
         messageText(e instanceof Error ? e.message : String(e), this.plugin.settings.language)
       );
@@ -7340,21 +7909,30 @@ var TaskModal = class extends BaseModal {
       ["FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR", w.weekdays],
       ["FREQ=MONTHLY", w.monthly],
       ["FREQ=YEARLY", w.yearly],
+      ["builder", w.repeatBuilder],
       ["custom", w.custom]
     ];
     const preset = rule.split(";").filter((part) => !part.startsWith("UNTIL=")).join(";");
     const repeat2 = select(
       field(grid, w.repeat),
       opts,
-      opts.some((o) => o[0] === preset) ? preset : "custom"
+      opts.some((o) => o[0] === preset) ? preset : simpleSchedule(rule) ? "builder" : "custom"
     );
     const customLabel = field(form, w.custom);
     const custom = input(customLabel, "text", rule, "FREQ=WEEKLY;BYDAY=MO,TH");
+    let updatePreview = () => void 0;
+    const editor = repeatEditor(form, rule, w, () => updatePreview());
     let repeating = !!repeat2.value;
     let taskDue = formatDate(task?.due ?? this.defaults.due ?? "", this.plugin.settings.dateFormat);
     let repeatEnd = formatDate(recurrenceEnd(rule), this.plugin.settings.dateFormat);
     const updateRepeat = () => {
       customLabel.hidden = repeat2.value !== "custom";
+      custom.disabled = repeat2.value !== "custom";
+      editor.box.hidden = repeat2.value !== "builder";
+      for (const control of editor.box.querySelectorAll(
+        "input, select"
+      ))
+        control.disabled = repeat2.value !== "builder";
       const next = !!repeat2.value;
       if (next !== repeating) {
         if (repeating) repeatEnd = due.value;
@@ -7379,12 +7957,12 @@ var TaskModal = class extends BaseModal {
     });
     updateRepeat();
     const recurrenceValue = (end) => {
-      const raw = repeat2.value === "custom" ? custom.value.trim() : repeat2.value;
+      const raw = repeat2.value === "custom" ? custom.value.trim() : repeat2.value === "builder" ? editor.value() : repeat2.value;
       const base = repeat2.value !== "custom" && repeat2.value === preset ? rule : raw;
       return raw ? withRecurrenceEnd(base, end) : "";
     };
     const preview = el(form, "small", "tp-muted tp-repeat-preview");
-    const updatePreview = () => {
+    updatePreview = () => {
       preview.hidden = !repeat2.value;
       if (!repeat2.value) return;
       try {
@@ -7394,8 +7972,9 @@ var TaskModal = class extends BaseModal {
           preview.textContent = w.invalid;
           return;
         }
-        const first = firstRepeatDate(recurrenceValue(end), start);
-        preview.textContent = first ? `${w.firstRepeat}: ${formatDate(first, this.plugin.settings.dateFormat)}` : messageText(
+        const dates = repeatPreview(recurrenceValue(end), start);
+        const first = dates[0];
+        preview.textContent = first ? `${w.firstRepeat}: ${formatDate(first, this.plugin.settings.dateFormat)}${dates.length > 1 ? ` \xB7 ${w.repeatNext}: ${dates.slice(1).map((d) => formatDate(d, this.plugin.settings.dateFormat)).join(", ")}` : ""}` : messageText(
           "The repeat rule has no occurrence within its dates.",
           this.plugin.settings.language
         );
@@ -7421,7 +8000,7 @@ var TaskModal = class extends BaseModal {
     );
     const kind = select(
       field(grid, w.kind),
-      ["task", "meeting", "payment", "status"].map((k) => [k, w[k]]),
+      ["task", "meeting", "contact", "payment", "status"].map((k) => [k, w[k]]),
       task?.kind ?? this.defaults.kind ?? "task"
     );
     const priority = select(
@@ -7511,6 +8090,51 @@ var TaskModal = class extends BaseModal {
     description.rows = 3;
     description.maxLength = 1e5;
     description.placeholder = w.description;
+    const result = el(field(form, w.result), "textarea", "tp-result");
+    result.value = this.item?.recurring ? task?.occurrences[this.item.key]?.result ?? "" : task?.result ?? this.defaults.result ?? "";
+    result.rows = 3;
+    result.maxLength = 1e5;
+    result.placeholder = w.resultHint;
+    result.disabled = !!this.item?.recurring && !this.item.key;
+    const work = workDaysEditor(
+      form,
+      task?.workDates ?? this.defaults.workDates ?? [],
+      date,
+      due,
+      planned,
+      repeat2,
+      w,
+      this.plugin.settings.dateFormat,
+      this.plugin.settings.language
+    );
+    const group = (label, name, opened) => {
+      const details = el(form, "details", "tp-form-section");
+      details.dataset.section = name;
+      details.open = opened;
+      el(details, "summary", "", label);
+      return el(details, "div", "tp-form-section-body");
+    };
+    const planning = group(
+      w.planningOptions,
+      "planning",
+      !!appointment.value || !["todo", "backlog"].includes(status.value) || priority.value !== "normal" || Number(planned.value) > 0 || work.value().length > 0
+    );
+    const planningGrid = el(planning, "div", "tp-form-grid");
+    for (const control of [status, appointment, priority, planned])
+      planningGrid.appendChild(control.closest(".tp-field"));
+    planning.appendChild(work.box);
+    const repeatingGroup = group(w.repeatOptions, "repeat", !!repeat2.value);
+    repeatingGroup.append(repeat2.closest(".tp-field"), editor.box, customLabel, preview);
+    const tracking = group(w.timeTracking, "tracking", Number(minutes.value) > 0);
+    tracking.appendChild(minutes.closest(".tp-field"));
+    const notes = group(
+      w.descriptionAndResult,
+      "description",
+      !!description.value || !!result.value
+    );
+    notes.append(description.closest(".tp-field"), result.closest(".tp-field"));
+    for (const control of [project, kind, date, due, amount, currency, paymentDate])
+      grid.appendChild(control.closest(".tp-field"));
     if (this.item?.recurring && !this.item.key) {
       minutes.disabled = true;
       if (status) status.disabled = true;
@@ -7539,11 +8163,12 @@ var TaskModal = class extends BaseModal {
         const draft = {
           title: title2.value,
           description: description.value,
+          result: result.disabled ? void 0 : result.value,
           status: status.value,
           project: project.value,
           scheduled: readDate(date),
           scheduledTime: readTime(appointment),
-          workDates: recurrence ? [] : task?.workDates ?? this.defaults.workDates,
+          workDates: recurrence ? [] : work.value().length || task?.workDates?.length ? work.value() : void 0,
           plannedMinutes: Number(planned.value),
           due: recurrence ? "" : readDate(due),
           recurrence,
@@ -7561,7 +8186,8 @@ var TaskModal = class extends BaseModal {
             this.item,
             draft,
             Number(minutes.value),
-            status?.value ?? this.item.status
+            status?.value ?? this.item.status,
+            true
           );
         } else {
           await this.plugin.service.createTask(draft);
@@ -7574,6 +8200,50 @@ var TaskModal = class extends BaseModal {
         save.disabled = false;
       });
     });
+    this.draft = keepFormDraft(
+      this.plugin,
+      form,
+      `form:task:${task?.path ?? `new:${this.defaults.kind || "task"}`}:${this.item?.key || ""}`,
+      task ? taskDraftBaseline(task, this.item?.key) : "",
+      {
+        title: title2,
+        project,
+        status,
+        kind,
+        priority,
+        date,
+        appointment,
+        due,
+        repeat: repeat2,
+        custom,
+        planned,
+        minutes,
+        amount,
+        currency,
+        paymentDate,
+        description,
+        result,
+        workDates: work.state,
+        ...editor.controls
+      },
+      w,
+      () => {
+        editor.refresh();
+        repeating = !!repeat2.value;
+        if (repeating) repeatEnd = due.value;
+        else taskDue = due.value;
+        updateRepeat();
+        updatePreview();
+        updatePayment();
+        work.refresh();
+        if (appointment.value || !["todo", "backlog"].includes(status.value) || priority.value !== "normal" || Number(planned.value) > 0 || work.value().length)
+          planning.parentElement.open = true;
+        if (repeat2.value) repeatingGroup.parentElement.open = true;
+        if (Number(minutes.value) > 0) tracking.parentElement.open = true;
+        if (description.value || result.value)
+          notes.parentElement.open = true;
+      }
+    );
     title2.focus();
   }
 };
@@ -7611,6 +8281,59 @@ var MoveModal = class extends BaseModal {
     );
   }
 };
+var CalendarJumpModal = class extends BaseModal {
+  constructor(plugin, selected, choose) {
+    super(plugin);
+    this.selected = selected;
+    this.choose = choose;
+  }
+  onOpen() {
+    super.onOpen();
+    el(this.contentEl, "h2", "", this.w.goToDate);
+    const form = el(this.contentEl, "form", "tp-calendar-jump-form");
+    const fields = el(form, "div", "tp-calendar-jump-fields");
+    const date = input(field(fields, this.w.calendarDay), "number", this.selected.slice(8));
+    date.min = "1";
+    date.max = "31";
+    date.required = true;
+    date.dataset.jumpDay = "true";
+    const month = select(
+      field(fields, this.w.pickerMonth),
+      Array.from({ length: 12 }, (_, i) => [
+        String(i + 1).padStart(2, "0"),
+        new Intl.DateTimeFormat(this.plugin.settings.language === "ru" ? "ru-RU" : "en-US", {
+          month: "long",
+          timeZone: "UTC"
+        }).format(new Date(Date.UTC(2026, i, 1)))
+      ]),
+      this.selected.slice(5, 7)
+    );
+    month.dataset.jumpMonth = "true";
+    const year = input(field(fields, this.w.pickerYear), "number", this.selected.slice(0, 4));
+    year.min = "1";
+    year.max = "9999";
+    year.required = true;
+    year.dataset.jumpYear = "true";
+    const actions = el(form, "div", "tp-modal-actions");
+    button(actions, this.w.cancel, () => this.close());
+    const apply = button(actions, this.w.goToDate, () => {
+    }, "mod-cta");
+    apply.type = "submit";
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const key = `${year.value.padStart(4, "0")}-${month.value}-${date.value.padStart(2, "0")}`;
+      if (!dateKey(key)) {
+        date.setCustomValidity(this.w.invalidCalendarDate);
+        date.reportValidity();
+        return;
+      }
+      this.close();
+      this.choose(key);
+    });
+    form.addEventListener("input", () => date.setCustomValidity(""));
+    form.addEventListener("change", () => date.setCustomValidity(""));
+  }
+};
 var DeleteModal = class extends BaseModal {
   constructor(plugin, item) {
     super(plugin);
@@ -7635,6 +8358,35 @@ var DeleteModal = class extends BaseModal {
       () => void this.run(() => this.plugin.service.trash(this.item.task.path, "task")),
       "mod-warning"
     );
+  }
+};
+var DeleteEntityModal = class extends BaseModal {
+  constructor(plugin, type, entity) {
+    super(plugin);
+    this.type = type;
+    this.entity = entity;
+  }
+  onOpen() {
+    super.onOpen();
+    this.contentEl.dataset.deleteEntity = this.type;
+    el(this.contentEl, "h2", "", this.type === "area" ? this.w.deleteArea : this.w.deleteProject);
+    el(this.contentEl, "p", "", this.entity.title);
+    el(this.contentEl, "p", "tp-muted", this.w.deleteEntityHelp);
+    const actions = el(this.contentEl, "div", "tp-modal-actions");
+    const cancel = button(actions, this.w.cancel, () => this.close());
+    const remove = button(
+      actions,
+      this.w.remove,
+      () => {
+        if (remove.disabled) return;
+        remove.disabled = true;
+        void this.run(() => this.plugin.service.trash(this.entity.path, this.type)).finally(() => {
+          remove.disabled = false;
+        });
+      },
+      "mod-warning"
+    );
+    cancel.focus();
   }
 };
 var EntityModal = class extends BaseModal {
@@ -7691,8 +8443,24 @@ var EntityModal = class extends BaseModal {
     budgetCurrency.pattern = "[A-Za-z]{3}";
     budgetCurrency.maxLength = 3;
     budgetCurrency.required = true;
+    const budget = el(form, "details", "tp-form-section");
+    budget.open = this.entity?.monthlyBudget != null;
+    el(budget, "summary", "", this.w.budgets);
+    const body2 = el(budget, "div", "tp-form-section-body tp-form-grid");
+    body2.append(budgetAmount.closest(".tp-field"), budgetCurrency.closest(".tp-field"));
     const actions = el(form, "div", "tp-modal-actions");
     button(actions, this.w.cancel, () => this.close());
+    const entity = this.entity;
+    if (entity)
+      button(
+        actions,
+        this.w.remove,
+        () => {
+          this.close();
+          new DeleteEntityModal(this.plugin, this.type, entity).open();
+        },
+        "mod-warning"
+      );
     const save = el(actions, "button", "mod-cta", this.w.save);
     save.type = "submit";
     form.addEventListener("submit", (e) => {
@@ -7727,6 +8495,24 @@ var EntityModal = class extends BaseModal {
         save.disabled = false;
       });
     });
+    this.draft = keepFormDraft(
+      this.plugin,
+      form,
+      `form:${this.type}:${this.entity?.path || "new"}`,
+      this.entity ? JSON.stringify(this.entity) : "",
+      {
+        title: title2,
+        budgetAmount,
+        budgetCurrency,
+        ...area ? { area } : {},
+        ...status ? { status } : {},
+        ...due ? { due } : {}
+      },
+      this.w,
+      () => {
+        if (budgetAmount.value) budget.open = true;
+      }
+    );
     title2.focus();
   }
 };
@@ -7783,6 +8569,7 @@ var SubscriptionModal = class extends BaseModal {
       "number",
       t?.amount == null ? "" : String(t.amount)
     );
+    amount.dataset.field = "amount";
     amount.min = "0";
     amount.max = "1000000000000";
     amount.step = "any";
@@ -7824,6 +8611,11 @@ var SubscriptionModal = class extends BaseModal {
     description.value = t?.description || "";
     description.rows = 5;
     description.maxLength = 1e5;
+    const notes = el(form, "details", "tp-form-section");
+    notes.open = !!description.value;
+    el(notes, "summary", "", w.description);
+    const notesBody = el(notes, "div", "tp-form-section-body");
+    notesBody.appendChild(description.closest(".tp-field"));
     const actions = el(form, "div", "tp-modal-actions");
     button(actions, w.cancel, () => this.close());
     const save = el(actions, "button", "mod-cta", w.save);
@@ -7850,6 +8642,17 @@ var SubscriptionModal = class extends BaseModal {
         save.disabled = false;
       });
     });
+    this.draft = keepFormDraft(
+      this.plugin,
+      form,
+      `form:subscription:${t?.path || "new"}`,
+      t ? taskDraftBaseline(t) : "",
+      { title: title2, amount, currency, period, date, project, active, description },
+      w,
+      () => {
+        if (description.value) notes.open = true;
+      }
+    );
     title2.focus();
   }
 };
@@ -7881,6 +8684,7 @@ var ChargeModal = class extends BaseModal {
       "number",
       t.amount === null ? "" : String(t.amount)
     );
+    amount.dataset.field = "amount";
     amount.required = true;
     amount.min = "0";
     amount.max = "1000000000000";
@@ -7910,6 +8714,65 @@ var ChargeModal = class extends BaseModal {
   }
 };
 
+// src/ui/state.ts
+function object(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+function plannerState(value) {
+  const raw = object(value);
+  const choice = (key, choices, fallback) => choices.includes(raw[key]) ? raw[key] : fallback;
+  const text = (key) => typeof raw[key] === "string" ? raw[key].slice(0, 1e3) : "";
+  return {
+    tab: choice(
+      "tab",
+      [
+        "today",
+        "inbox",
+        "upcoming",
+        "calendar",
+        "projects",
+        "subscriptions",
+        "statistics",
+        "kanban",
+        "manualTab"
+      ],
+      "today"
+    ),
+    calendarView: choice("calendarView", ["day", "week", "month"], "month"),
+    calendarDetailed: raw.calendarDetailed === true,
+    calendarOverview: raw.calendarOverview === true,
+    hideCalendarDone: raw.hideCalendarDone === true,
+    hideCalendarFailed: raw.hideCalendarFailed === true,
+    hideCalendarRecurring: raw.hideCalendarRecurring === true,
+    sidebarCollapsed: raw.sidebarCollapsed === true,
+    query: text("query"),
+    area: text("area"),
+    project: text("project"),
+    boardScope: choice("boardScope", ["today", "week", "month", "all", "undated"], "week"),
+    expenseMode: choice("expenseMode", ["payments", "subscriptions"], "payments"),
+    statsMode: choice("statsMode", ["business", "finance"], "business")
+  };
+}
+function formDrafts(value) {
+  const result = {};
+  for (const [key, entry] of Object.entries(object(value)).slice(-20)) {
+    const raw = object(entry);
+    if (!key.startsWith("form:") || key.length > 2048 || typeof raw.baseline !== "string" || raw.baseline.length > 2e5)
+      continue;
+    const values = {};
+    for (const [name, field2] of Object.entries(object(raw.values)).slice(0, 40))
+      if (/^[a-zA-Z][a-zA-Z0-9]*$/.test(name) && typeof field2 === "string" && field2.length <= 1e5)
+        values[name] = field2;
+    result[key] = {
+      baseline: raw.baseline,
+      values,
+      dateFormat: raw.dateFormat === "mdy" || raw.dateFormat === "iso" ? raw.dateFormat : "dmy",
+      savedOn: typeof raw.savedOn === "string" ? raw.savedOn : day()
+    };
+  }
+  return result;
+}
+
 // src/ui/view.ts
 var VIEW_TYPE = "tiny-planner-view";
 var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
@@ -7917,6 +8780,7 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
     super(leaf);
     this.plugin = plugin;
     this.w = words(plugin.settings.language);
+    Object.assign(this, plannerState(plugin.settings.uiState));
   }
   static nextLabelId = 0;
   navLabelId = `tp-navigation-${_PlannerView.nextLabelId++}`;
@@ -7932,11 +8796,15 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
   statsMode = "business";
   financeState = { days: 30, currency: "USD", limit: 40 };
   query = "";
+  searchSnapshot;
+  searchText = /* @__PURE__ */ new Map();
   area = "";
   project = "";
   month = day().slice(0, 7) + "-01";
   calendarView = "month";
   calendarDetailed = false;
+  calendarDisplayOpen = false;
+  calendarOverview = false;
   calendarFocus = day();
   w;
   main;
@@ -7953,9 +8821,20 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
   dashboardState = { days: 30, page: 0, details: false };
   drag;
   monthTimer;
+  dragPreview;
   opened = false;
   resizeObserver;
+  dayLoadSequence = 0;
+  dayLoadDismiss;
+  closeDayLoad = () => {
+    this.dayLoadDismiss?.();
+  };
+  dayLoadKeydown = (event) => {
+    if (event.key === "Escape") this.closeDayLoad();
+  };
   dismissCardMenus = (event) => {
+    const load = event.target?.closest?.(".tp-day-load");
+    if (!load || !this.contentEl.contains(load)) this.closeDayLoad();
     if (this.calendarDetailed) return;
     for (const menu of this.contentEl.querySelectorAll(".tp-card-menu[open]"))
       if (!menu.contains(event.target)) this.setCardMenu(menu, false);
@@ -7972,6 +8851,47 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
     menu.closest(".tp-task-compact")?.classList.toggle("tp-card-expanded", open);
   }
   quickDraft;
+  getState() {
+    return plannerState({
+      tab: this.tab,
+      calendarView: this.calendarView,
+      calendarDetailed: this.calendarDetailed,
+      calendarOverview: this.calendarOverview,
+      hideCalendarDone: this.hideCalendarDone,
+      hideCalendarFailed: this.hideCalendarFailed,
+      hideCalendarRecurring: this.hideCalendarRecurring,
+      sidebarCollapsed: this.sidebarCollapsed,
+      query: this.query,
+      area: this.area,
+      project: this.project,
+      boardScope: this.boardScope,
+      expenseMode: this.expenseMode,
+      statsMode: this.statsMode
+    });
+  }
+  async setState(state) {
+    Object.assign(
+      this,
+      plannerState({
+        ...this.plugin.settings.uiState,
+        ...state && typeof state === "object" ? state : {}
+      })
+    );
+    if (this.opened) this.build();
+  }
+  navigate(tab) {
+    this.tab = tab;
+    this.limits.clear();
+    if (this.opened) this.build();
+  }
+  rememberState() {
+    const state = this.getState();
+    if (JSON.stringify(state) !== JSON.stringify(this.plugin.settings.uiState)) {
+      this.plugin.settings.uiState = state;
+      this.plugin.scheduleSettings();
+      this.app.workspace.requestSaveLayout?.();
+    }
+  }
   getViewType() {
     return VIEW_TYPE;
   }
@@ -7985,6 +8905,9 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
     this.opened = true;
     this.contentEl.ownerDocument.addEventListener("pointerdown", this.dismissCardMenus);
     this.contentEl.ownerDocument.addEventListener("focusin", this.dismissCardMenus);
+    this.contentEl.ownerDocument.addEventListener("scroll", this.closeDayLoad, true);
+    this.contentEl.ownerDocument.addEventListener("keydown", this.dayLoadKeydown);
+    this.contentEl.ownerDocument.defaultView?.addEventListener("resize", this.closeDayLoad);
     const Observer = this.contentEl.ownerDocument.defaultView?.ResizeObserver;
     if (Observer) {
       let previousWidth = 0;
@@ -7993,10 +8916,12 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
         if (!width) return;
         this.contentEl.classList.toggle("tp-narrow", width <= 1050);
         this.contentEl.classList.toggle("tp-mobile", width <= 600);
+        const agendaChanged = this.contentEl.classList.contains("tp-agenda") !== width <= 1100;
         this.contentEl.classList.toggle("tp-agenda", width <= 1100);
         if (Math.abs(width - previousWidth) > 1) {
           previousWidth = width;
-          if (this.tab === "statistics") this.render();
+          if (this.tab === "statistics" || this.tab === "calendar" && agendaChanged)
+            this.render();
         }
       });
       this.resizeObserver.observe(this.contentEl);
@@ -8010,12 +8935,20 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
     });
   }
   async onClose() {
+    this.rememberState();
     this.opened = false;
     this.contentEl.ownerDocument.removeEventListener("pointerdown", this.dismissCardMenus);
     this.contentEl.ownerDocument.removeEventListener("focusin", this.dismissCardMenus);
+    this.contentEl.ownerDocument.removeEventListener("scroll", this.closeDayLoad, true);
+    this.contentEl.ownerDocument.removeEventListener("keydown", this.dayLoadKeydown);
+    this.contentEl.ownerDocument.defaultView?.removeEventListener("resize", this.closeDayLoad);
+    this.closeDayLoad();
     this.unsubscribe?.();
     this.resizeObserver?.disconnect();
     this.cancelMonth();
+    this.dragPreview?.remove();
+    this.searchSnapshot = void 0;
+    this.searchText.clear();
     this.contentEl.replaceChildren();
   }
   rebuild() {
@@ -8154,6 +9087,7 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
         this.shell.classList.toggle("tp-sidebar-collapsed", this.sidebarCollapsed);
         updateSidebar();
         updateMenuToggle();
+        this.rememberState();
         if (focused) menuToggle.focus();
         if (this.tab === "statistics") this.render();
       },
@@ -8247,7 +9181,7 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
     quickOptions.id = `${this.navLabelId}-quick-options`;
     quickOptions.hidden = true;
     this.quickProject = select(quickOptions, [["", this.w.noProject]], this.project);
-    this.quickProject.setAttribute("aria-label", this.w.project);
+    this.quickProject.setAttribute("aria-label", this.w.newTaskProject);
     this.quickProject.addEventListener("change", () => this.projectTooltip());
     const date = dateInput(
       quick,
@@ -8355,6 +9289,7 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
       },
       "tp-filters-toggle"
     );
+    el(filterToggle, "span", "tp-filter-caption", this.w.filters);
     filterToggle.setAttribute("aria-controls", filterPanel.id);
     filterToggle.setAttribute("aria-pressed", String(Boolean(this.area || this.project)));
     filterToggle.setAttribute("aria-expanded", String(this.filtersExpanded));
@@ -8372,6 +9307,11 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
     this.projectFilter.setAttribute("aria-label", this.w.project);
     this.projectFilter.addEventListener("change", () => {
       this.project = this.projectFilter.value;
+      if (this.project) {
+        this.projectOpen.set(this.project, true);
+        for (const card of this.main.querySelectorAll(".tp-project"))
+          if (card.dataset.path === this.project) card.open = true;
+      }
       this.limits.clear();
       this.dashboardState.page = 0;
       setSelectValue(this.quickProject, this.project);
@@ -8392,6 +9332,9 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
     );
     content.insertBefore(filterPanel, quick);
     content.insertBefore(filters, filterPanel);
+    const chips = el(content, "div", "tp-filter-chips");
+    chips.setAttribute("aria-label", this.w.filters);
+    chips.hidden = true;
     this.main = el(content, "main", "tp-main");
     this.stash = el(content, "div", "tp-drag-stash");
     this.stash.setAttribute("aria-hidden", "true");
@@ -8411,8 +9354,9 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
   }
   updateOptions() {
     const snap = this.plugin.repo.snapshot();
-    if (this.area && !snap.areas.some((a) => a.path === this.area)) this.area = "";
-    if (this.project && !snap.projects.some((p) => p.path === this.project && (!this.area || p.area === this.area)))
+    if (this.plugin.repo.loaded && this.area && !snap.areas.some((a) => a.path === this.area))
+      this.area = "";
+    if (this.plugin.repo.loaded && this.project && !snap.projects.some((p) => p.path === this.project && (!this.area || p.area === this.area)))
       this.project = "";
     const projects = snap.projects.filter((p) => !this.area || p.area === this.area).sort((a, b) => this.plugin.compareProjects(a, b));
     this.fill(
@@ -8440,20 +9384,82 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
     this.projectTooltip();
   }
   projectTooltip() {
-    this.quickProject.title = this.quickProject.value ? this.quickProject.selectedOptions[0]?.textContent || "" : this.w.inbox + " \xB7 " + this.w.noProject.toLocaleLowerCase();
+    this.quickProject.title = this.quickProject.value ? this.quickProject.selectedOptions[0]?.textContent || "" : this.w.newTaskProject + " \xB7 " + this.w.noProject.toLocaleLowerCase();
+  }
+  renderFilterChips() {
+    const chips = this.contentEl.querySelector(".tp-filter-chips");
+    if (!chips) return;
+    chips.replaceChildren();
+    const snap = this.plugin.repo.snapshot();
+    const chip = (label, clear) => {
+      const control = button(
+        chips,
+        label,
+        () => {
+          clear();
+          this.limits.clear();
+          this.dashboardState.page = 0;
+          this.build();
+        },
+        "tp-filter-chip"
+      );
+      el(control, "span", "", "\xD7").setAttribute("aria-hidden", "true");
+      control.setAttribute("aria-label", `${this.w.clear}: ${label}`);
+    };
+    if (this.area)
+      chip(snap.areas.find((a) => a.path === this.area)?.title || this.area, () => {
+        this.area = "";
+        this.project = "";
+      });
+    if (this.project)
+      chip(snap.projects.find((p) => p.path === this.project)?.title || this.project, () => {
+        this.project = "";
+      });
+    if (this.query.trim())
+      chip(this.query, () => {
+        this.query = "";
+      });
+    chips.hidden = !chips.childElementCount || this.tab === "manualTab";
+  }
+  clearFilters() {
+    this.query = "";
+    this.area = "";
+    this.project = "";
+    this.dashboardState.page = 0;
+    this.build();
   }
   filtered() {
     const snap = this.plugin.repo.snapshot();
+    if (this.searchSnapshot !== snap) {
+      this.searchSnapshot = snap;
+      this.searchText.clear();
+    }
     const projects = new Map(snap.projects.map((p) => [p.path, p]));
     const areas = new Map(snap.areas.map((a) => [a.path, a.title]));
     const q = this.query.trim().toLocaleLowerCase();
-    return snap.tasks.filter((t) => {
-      const p = projects.get(t.project);
-      return (!this.project || t.project === this.project) && (!this.area || p?.area === this.area) && (!q || [t.title, t.description, p?.title, areas.get(p?.area || "")].filter(Boolean).join(" ").toLocaleLowerCase().includes(q));
+    return snap.tasks.filter((task) => {
+      const project = projects.get(task.project);
+      if (this.project && task.project !== this.project) return false;
+      if (this.area && project?.area !== this.area) return false;
+      if (!q) return true;
+      let text = this.searchText.get(task.path);
+      if (text === void 0) {
+        text = [
+          task.title,
+          task.description,
+          task.result,
+          ...Object.values(task.occurrences).map((item) => item.result),
+          project?.title,
+          areas.get(project?.area || "")
+        ].filter(Boolean).join(" ").toLocaleLowerCase();
+        this.searchText.set(task.path, text);
+      }
+      return text.includes(q);
     });
   }
   render() {
     if (!this.main) return;
+    this.closeDayLoad();
     const scrollPositions = [];
     for (let node = this.main; node; node = node.parentElement)
       scrollPositions.push({ node, top: node.scrollTop, left: node.scrollLeft });
@@ -8485,6 +9491,10 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
       this.projectOpen.set(details.dataset.path, details.open);
     if (!retained) this.main.replaceChildren();
     this.undoButton.disabled = !this.plugin.service.canUndo;
+    const filterToggle = this.contentEl.querySelector(".tp-filters-toggle");
+    filterToggle?.setAttribute("aria-pressed", String(Boolean(this.area || this.project)));
+    this.renderFilterChips();
+    this.rememberState();
     const records = this.filtered();
     const tasks = records.filter((t) => t.kind !== "subscription");
     const today = day();
@@ -8673,9 +9683,10 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
       node.scrollLeft = left;
     }
   }
-  workloadPanel(tasks, dates) {
+  workloadPanel(tasks, dates, precomputed) {
     const capacity = this.plugin.settings.dailyCapacityMinutes ?? 480;
-    const loads = dates.map((d) => dayLoad(tasks, d, capacity));
+    const byDate = precomputed ?? dayLoads(tasks, dates, capacity);
+    const loads = dates.map((date) => byDate.get(date)).filter((load) => !!load);
     const panel = el(this.main, "section", "tp-workload-panel");
     const heading = el(panel, "div", "tp-workload-heading");
     el(heading, "h2", "", this.w.workload);
@@ -8687,26 +9698,26 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
         `${this.pretty(dates[0])} \u2014 ${this.pretty(dates.at(-1))}`
       );
     const total = loads.reduce((n, d) => n + d.minutes, 0);
-    const unestimated = /* @__PURE__ */ new Set();
+    const selectedDates = new Set(dates);
+    let unestimated = loads.reduce((count, load) => count + load.unestimated, 0);
     for (const task of tasks) {
-      if (task.plannedMinutes || task.kind === "payment" || task.kind === "subscription") continue;
-      for (const item of calendarItems(task, dates[0] || "", dates.at(-1) || "")) {
-        if (isActive(item.status) && (item.calendarRole === "work" || !workDays(task).length))
-          unestimated.add(task.path + "\0" + (item.recurring ? item.key : ""));
-      }
+      if (task.recurrence || task.plannedMinutes || !isActive(task.status) || task.kind === "payment" || task.kind === "subscription")
+        continue;
+      const selected = workDays(task).filter((date) => selectedDates.has(date)).length;
+      unestimated -= Math.max(0, selected - 1);
     }
     panel.dataset.plannedMinutes = String(total);
-    panel.dataset.unestimatedTasks = String(unestimated.size);
+    panel.dataset.unestimatedTasks = String(unestimated);
     el(
       panel,
       "strong",
       "",
-      total || !unestimated.size ? `${this.w.workloadPlanned}: ${this.duration(total)}` : this.w.workloadNoEstimates
+      total || !unestimated ? `${this.w.workloadPlanned}: ${this.duration(total)}` : this.w.workloadNoEstimates
     );
     if (dates.length === 1)
       el(panel, "span", "tp-muted", `${this.w.workloadAvailable}: ${this.duration(capacity)}`);
-    if (unestimated.size)
-      el(panel, "span", "tp-muted", `${this.w.workloadUnknownTasks}: ${unestimated.size}`);
+    if (unestimated)
+      el(panel, "span", "tp-muted", `${this.w.workloadUnknownTasks}: ${unestimated}`);
     const overloaded = loads.filter((d) => d.over).length;
     if (overloaded)
       el(panel, "span", "tp-load-over", `${this.w.workloadOverloadedDays}: ${overloaded}`);
@@ -9261,14 +10272,18 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
     }
   }
   kindBadge(parent, kind) {
-    if (!["meeting", "payment", "status"].includes(kind)) return;
+    if (!["meeting", "contact", "payment", "status"].includes(kind)) return;
     const badge = el(parent, "span", "tp-kind-badge");
     badge.dataset.kind = kind;
     badge.title = this.w[kind];
     badge.setAttribute("role", "img");
     badge.setAttribute("aria-label", this.w[kind]);
     if (kind === "payment") badge.textContent = "$";
-    else (0, import_obsidian7.setIcon)(badge, kind === "meeting" ? "users-round" : "flag");
+    else
+      (0, import_obsidian7.setIcon)(
+        badge,
+        kind === "meeting" ? "users-round" : kind === "contact" ? "message-circle" : "flag"
+      );
   }
   priorityBadge(parent, priority) {
     const label = priority === "high" ? this.w.highPriority : this.w.lowPriority;
@@ -9278,7 +10293,18 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
     badge.setAttribute("aria-label", label);
   }
   empty(parent = this.main) {
-    el(parent, "div", "tp-empty", this.w.empty);
+    const filtered = !!(this.query.trim() || this.area || this.project);
+    const message = filtered ? this.w.emptyFiltered : this.tab === "today" ? this.w.emptyToday : this.tab === "inbox" ? this.w.emptyInbox : this.tab === "upcoming" ? this.w.emptyUpcoming : this.tab === "projects" ? parent === this.main ? this.w.emptyProjects : this.w.emptyProject : this.w.empty;
+    const box = el(parent, "div", "tp-empty");
+    el(box, "p", "", message);
+    button(
+      box,
+      filtered ? this.w.clear : this.tab === "projects" ? this.w.addProject : this.w.add,
+      () => filtered ? this.clearFilters() : this.tab === "projects" ? new EntityModal(this.plugin, "project").open() : new TaskModal(this.plugin, void 0, {
+        scheduled: this.tab === "today" ? day() : ""
+      }).open(),
+      "tp-text-button"
+    );
   }
   section(label, items, key, showEmpty = false, parent = this.main, total = items.length) {
     if (!items.length) {
@@ -9355,7 +10381,7 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
       details.setAttribute("role", "img");
       details.setAttribute("aria-label", this.w.description);
     }
-    if (compact && (item.recurring || item.calendarRole === "deadline")) {
+    if (compact && (item.recurring || item.task.due && item.task.due === item.date)) {
       const badge = el(heading, "span", "tp-calendar-role-icon");
       const label = item.recurring ? this.w.repeat : this.w.deadline;
       badge.title = label;
@@ -9363,6 +10389,15 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
       badge.setAttribute("aria-label", label);
       (0, import_obsidian7.setIcon)(badge, item.recurring ? "repeat" : "calendar-clock");
     }
+    if (compact && !item.recurring && item.task.due && item.task.due === item.date) {
+      row.classList.add("tp-calendar-ends");
+      title2.setAttribute(
+        "aria-label",
+        `${this.w.deadline} \xB7 ${item.task.scheduledTime ? item.task.scheduledTime + " \xB7 " : ""}${item.task.title}`
+      );
+    }
+    if (compact && !item.recurring && item.task.scheduled <= item.task.due && item.date === item.task.scheduled)
+      row.classList.add("tp-calendar-starts");
     const meta = el(body2, "div", "tp-task-meta");
     if (item.task.scheduledTime && !compact)
       el(meta, "strong", "tp-appointment-time", item.task.scheduledTime);
@@ -9476,10 +10511,124 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
   }
   endDrag() {
     this.cancelMonth();
+    this.drag?.source.classList.remove("tp-dragging");
     this.drag = void 0;
+    this.dragPreview?.remove();
+    this.dragPreview = void 0;
     this.stash.replaceChildren();
     this.main.querySelectorAll(".tp-calendar-retained").forEach((n) => n.remove());
     this.main.querySelectorAll(".tp-drop-target").forEach((n) => n.classList.remove("tp-drop-target"));
+  }
+  calendarLoadMeter(parent, load, cls = "tp-day-meter") {
+    const meter = el(parent, "div", cls);
+    meter.classList.toggle("tp-load-over", load.over);
+    meter.setAttribute("role", "meter");
+    meter.setAttribute("aria-label", this.w.workload);
+    meter.setAttribute("aria-valuemin", "0");
+    meter.setAttribute("aria-valuemax", String(Math.max(1, load.capacity)));
+    meter.setAttribute("aria-valuenow", String(Math.min(load.minutes, Math.max(1, load.capacity))));
+    meter.setAttribute(
+      "aria-valuetext",
+      `${this.duration(load.minutes)} / ${this.duration(load.capacity)}`
+    );
+    meter.style.setProperty(
+      "--tp-load-fill",
+      `${Math.min(100, load.capacity ? load.minutes / load.capacity * 100 : 100)}%`
+    );
+  }
+  calendarDayLoad(parent, date, load) {
+    const host = el(parent, "div", "tp-day-load");
+    host.classList.toggle("tp-load-over", load.over);
+    const toggle = button(
+      host,
+      load.minutes ? this.duration(load.minutes) : "\u2014",
+      () => {
+        if (pinned && !info.hidden) close();
+        else {
+          pinned = true;
+          open();
+        }
+      },
+      "tp-day-duration"
+    );
+    const info = el(host, "div", "tp-day-load-popup");
+    info.id = `${this.navLabelId}-load-${++this.dayLoadSequence}`;
+    info.hidden = true;
+    info.setAttribute("popover", "manual");
+    info.setAttribute("role", "note");
+    toggle.setAttribute("aria-controls", info.id);
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute(
+      "aria-label",
+      `${this.pretty(date)} \xB7 ${this.w.workloadPlanned}: ${this.duration(load.minutes)}`
+    );
+    const description = [
+      `${this.w.workloadPlanned}: ${this.duration(load.minutes)}`,
+      `${this.w.workloadAvailable}: ${this.duration(load.capacity)}`,
+      `${this.w.unestimated}: ${load.unestimated}`
+    ];
+    toggle.title = description.join(" \xB7 ");
+    el(info, "div", "", description[0]);
+    el(info, "div", "tp-day-capacity", description[1]);
+    const unknown = el(info, "div", "tp-day-unestimated", description[2]);
+    unknown.setAttribute("aria-label", description[2]);
+    if (load.minutes) this.calendarLoadMeter(info, load);
+    let pinned = false;
+    const close = () => {
+      if (info.hidePopover && !info.hidden) {
+        try {
+          info.hidePopover();
+        } catch {
+        }
+      }
+      info.hidden = true;
+      pinned = false;
+      toggle.setAttribute("aria-expanded", "false");
+      if (this.dayLoadDismiss === close) this.dayLoadDismiss = void 0;
+    };
+    const open = () => {
+      if (!info.hidden) return;
+      this.closeDayLoad();
+      this.dayLoadDismiss = close;
+      info.hidden = false;
+      toggle.setAttribute("aria-expanded", "true");
+      if (!info.showPopover) {
+        info.removeAttribute("popover");
+        info.classList.add("tp-load-inline");
+        return;
+      }
+      info.showPopover();
+      const win = host.ownerDocument.defaultView;
+      const frame = this.contentEl.getBoundingClientRect();
+      const left = Math.max(8, frame.left + 8), right = Math.min(win.innerWidth - 8, frame.right - 8);
+      const width = Math.min(240, Math.max(1, right - left));
+      info.style.setProperty("--tp-load-width", `${width}px`);
+      const anchor = toggle.getBoundingClientRect(), height = info.getBoundingClientRect().height;
+      const top = anchor.bottom + height + 6 <= win.innerHeight - 8 ? anchor.bottom + 6 : anchor.top - height - 6;
+      info.style.setProperty(
+        "--tp-load-left",
+        `${Math.max(left, Math.min(anchor.right - width, right - width))}px`
+      );
+      info.style.setProperty(
+        "--tp-load-top",
+        `${Math.max(8, Math.min(top, win.innerHeight - height - 8))}px`
+      );
+    };
+    host.addEventListener("pointerenter", (e) => {
+      if (e.pointerType === "mouse") open();
+    });
+    host.addEventListener("pointerleave", () => {
+      if (!pinned) close();
+    });
+    host.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        close();
+        toggle.focus({ preventScroll: true });
+      }
+    });
+    info.addEventListener("toggle", (e) => {
+      if (e.newState === "closed" && !info.hidden) close();
+    });
   }
   calendar(tasks, subscriptions) {
     this.main.classList.add("tp-has-calendar");
@@ -9505,12 +10654,33 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
     const navigation = el(toolbar, "div", "tp-calendar-navigation");
     const previous = iconButton(navigation, "chevron-left", this.w.previous, () => change(-1));
     const dates = calendarDays(this.calendarView, this.calendarFocus, this.month);
+    const loads = dayLoads(tasks, dates, this.plugin.settings.dailyCapacityMinutes ?? 480);
     const title2 = this.calendarView === "month" ? new Intl.DateTimeFormat(this.locale(), {
       month: "long",
       year: "numeric",
       timeZone: "UTC"
     }).format(utc(this.month)) : this.calendarView === "day" ? this.pretty(this.calendarFocus) : `${this.pretty(dates[0])} \u2014 ${this.pretty(dates.at(-1))}`;
-    el(navigation, "h2", "", title2);
+    const periodTitle = el(navigation, "h2");
+    const jump = button(
+      periodTitle,
+      title2,
+      () => {
+        new CalendarJumpModal(
+          this.plugin,
+          this.calendarView === "month" ? this.month : this.calendarFocus,
+          (date) => {
+            this.calendarFocus = date;
+            this.month = date.slice(0, 7) + "-01";
+            this.render();
+            this.main.querySelector("[data-calendar-jump]")?.focus({ preventScroll: true });
+          }
+        ).open();
+      },
+      "tp-calendar-jump"
+    );
+    jump.dataset.calendarJump = "true";
+    jump.setAttribute("aria-label", `${this.w.goToDate} \xB7 ${title2}`);
+    jump.title = this.w.goToDate;
     const next = iconButton(navigation, "chevron-right", this.w.next, () => change(1));
     const current = button(
       toolbar,
@@ -9541,58 +10711,101 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
       b.dataset.calendarView = view;
       b.setAttribute("aria-pressed", String(this.calendarView === view));
     }
-    const appearance = el(controls, "div", "tp-calendar-appearance");
-    appearance.setAttribute("role", "group");
-    appearance.setAttribute("aria-label", this.w.taskDetails);
-    for (const [mode, label] of [
-      ["minimal", this.w.minimalView],
-      ["detailed", this.w.detailedView]
-    ]) {
-      const toggle = button(appearance, label, () => {
-        this.calendarDetailed = mode === "detailed";
+    const display = iconButton(
+      controls,
+      "sliders-horizontal",
+      this.w.calendarDisplay,
+      () => {
+        this.calendarDisplayOpen = !this.calendarDisplayOpen;
+        panel.hidden = !this.calendarDisplayOpen;
+        display.setAttribute("aria-expanded", String(this.calendarDisplayOpen));
+      },
+      "tp-calendar-display-button"
+    );
+    display.dataset.calendarDisplay = "true";
+    display.setAttribute("aria-expanded", String(this.calendarDisplayOpen));
+    display.classList.toggle(
+      "tp-display-filtered",
+      this.hideCalendarDone || this.hideCalendarFailed || this.hideCalendarRecurring
+    );
+    const panel = el(controls, "div", "tp-calendar-display-panel");
+    panel.id = `${this.navLabelId}-display`;
+    display.setAttribute("aria-controls", panel.id);
+    panel.hidden = !this.calendarDisplayOpen;
+    controls.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && this.calendarDisplayOpen) {
+        event.preventDefault();
+        this.calendarDisplayOpen = false;
+        panel.hidden = true;
+        display.setAttribute("aria-expanded", "false");
+        display.focus({ preventScroll: true });
+      }
+    });
+    const option = (parent, label, checked, attribute, change2) => {
+      const row = el(parent, "label", "tp-calendar-option");
+      const toggle = input(row, "checkbox");
+      toggle.checked = checked;
+      toggle.setAttribute(attribute, "true");
+      el(row, "span", "", label);
+      toggle.addEventListener("change", () => {
+        change2(toggle.checked);
         this.render();
-        this.main.querySelector(`[data-calendar-appearance=${mode}]`)?.focus({ preventScroll: true });
+        this.main.querySelector(`[${attribute}]`)?.focus({ preventScroll: true });
       });
-      toggle.dataset.calendarAppearance = mode;
-      toggle.setAttribute("aria-pressed", String(this.calendarDetailed === (mode === "detailed")));
-    }
-    const visibility = el(controls, "div", "tp-calendar-visibility");
-    const hide = button(
+      return toggle;
+    };
+    const visibility = el(panel, "section", "tp-calendar-visibility");
+    visibility.setAttribute("aria-label", this.w.calendarShow);
+    el(visibility, "h3", "", this.w.calendarShow);
+    option(
       visibility,
-      this.hideCalendarDone ? this.w.showCompleted : this.w.hideCompleted,
-      () => {
-        this.hideCalendarDone = !this.hideCalendarDone;
-        this.render();
-        this.main.querySelector("[data-calendar-hide-done]")?.focus({ preventScroll: true });
+      this.w.calendarCompleted,
+      !this.hideCalendarDone,
+      "data-calendar-hide-done",
+      (show) => {
+        this.hideCalendarDone = !show;
       }
     );
-    stabilizeButton(hide, [this.w.hideCompleted, this.w.showCompleted]);
-    hide.dataset.calendarHideDone = "true";
-    hide.setAttribute("aria-pressed", String(this.hideCalendarDone));
-    const failed = button(
+    option(
       visibility,
-      this.hideCalendarFailed ? this.w.showFailed : this.w.hideFailed,
-      () => {
-        this.hideCalendarFailed = !this.hideCalendarFailed;
-        this.render();
-        this.main.querySelector("[data-calendar-hide-failed]")?.focus({ preventScroll: true });
+      this.w.calendarFailed,
+      !this.hideCalendarFailed,
+      "data-calendar-hide-failed",
+      (show) => {
+        this.hideCalendarFailed = !show;
       }
     );
-    stabilizeButton(failed, [this.w.hideFailed, this.w.showFailed]);
-    failed.dataset.calendarHideFailed = "true";
-    failed.setAttribute("aria-pressed", String(this.hideCalendarFailed));
-    const recurring = button(
+    option(
       visibility,
-      this.hideCalendarRecurring ? this.w.showRecurring : this.w.hideRecurring,
-      () => {
-        this.hideCalendarRecurring = !this.hideCalendarRecurring;
-        this.render();
-        this.main.querySelector("[data-calendar-hide-recurring]")?.focus({ preventScroll: true });
+      this.w.calendarRecurring,
+      !this.hideCalendarRecurring,
+      "data-calendar-hide-recurring",
+      (show) => {
+        this.hideCalendarRecurring = !show;
       }
     );
-    stabilizeButton(recurring, [this.w.hideRecurring, this.w.showRecurring]);
-    recurring.dataset.calendarHideRecurring = "true";
-    recurring.setAttribute("aria-pressed", String(this.hideCalendarRecurring));
+    const appearance = el(panel, "section", "tp-calendar-appearance");
+    appearance.setAttribute("aria-label", this.w.calendarCards);
+    el(appearance, "h3", "", this.w.calendarCards);
+    option(
+      appearance,
+      this.w.calendarDetails,
+      this.calendarDetailed,
+      "data-calendar-details",
+      (value) => {
+        this.calendarDetailed = value;
+      }
+    );
+    const overview = option(
+      appearance,
+      this.w.calendarLimit,
+      this.calendarOverview,
+      "data-calendar-overview",
+      (value) => {
+        this.calendarOverview = value;
+      }
+    );
+    overview.title = this.w.monthOverviewHelp;
     for (const [target, amount] of [
       [previous, -1],
       [next, 1]
@@ -9613,7 +10826,8 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
       tasks,
       dates.filter(
         (d) => this.calendarView !== "month" || d.slice(0, 7) === this.month.slice(0, 7)
-      )
+      ),
+      loads
     );
     const grouped = new Map(dates.map((d) => [d, []]));
     const continuations = new Map(dates.map((date) => [date, []]));
@@ -9630,6 +10844,19 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
       }
     const grid = el(this.main, "div", `tp-calendar-grid tp-calendar-${this.calendarView}-view`);
     grid.classList.toggle("tp-calendar-detailed", this.calendarDetailed);
+    const laneTasks = tasks.filter(
+      (task) => !(this.hideCalendarDone && task.status === "done") && !(this.hideCalendarFailed && task.status === "failed")
+    );
+    const weeks = this.calendarView === "day" ? [] : calendarLanes(laneTasks, dates);
+    const rangeBounds = new Map(laneTasks.map((task) => [task.path, task]));
+    const aligned = this.calendarView !== "day" && !this.contentEl.classList.contains("tp-agenda") && (this.contentEl.ownerDocument.defaultView?.CSS?.supports("grid-template-rows", "subgrid") ?? true);
+    grid.classList.toggle("tp-calendar-aligned", aligned);
+    if (aligned)
+      grid.style.setProperty(
+        "--tp-range-rows",
+        "auto " + weeks.map((week) => `auto ${week.count ? `repeat(${week.count}, auto) ` : ""}auto`).join(" ")
+      );
+    let weekTrack = 2;
     surface.appendChild(grid);
     this.main.appendChild(surface);
     grid.setAttribute("role", "group");
@@ -9646,16 +10873,30 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
     const projects = this.plugin.repo.snapshot().projects.filter(
       (p) => isActive(p.status) && (!this.area || p.area === this.area) && (!this.project || p.path === this.project) && (!this.query || this.plugin.projectLabel(p).toLocaleLowerCase().includes(this.query.toLocaleLowerCase()))
     );
-    for (const date of dates) {
+    const currentWeek = calendarPeriod(day(), 7);
+    for (const [dateIndex, date] of dates.entries()) {
       const cell = el(
         grid,
         "div",
-        "tp-day" + (date.slice(0, 7) !== this.month.slice(0, 7) ? " tp-outside" : "") + (date === day() ? " tp-day-today" : "")
+        "tp-day" + (date.slice(0, 7) !== this.month.slice(0, 7) ? " tp-outside" : "") + ([0, 6].includes(utc(date).getUTCDay()) ? " tp-day-weekend" : "") + (date === day() ? " tp-day-today" : "")
       );
       cell.dataset.day = date;
+      cell.classList.toggle(
+        "tp-current-week",
+        this.calendarView === "month" && date >= currentWeek.from && date <= currentWeek.to
+      );
+      cell.classList.toggle("tp-week-boundary", dateIndex >= 7);
       cell.setAttribute("role", "group");
       cell.setAttribute("aria-label", date);
+      const week = weeks[Math.floor(dateIndex / 7)];
+      if (aligned && week) {
+        if (dateIndex > 0 && dateIndex % 7 === 0)
+          weekTrack += weeks[Math.floor(dateIndex / 7) - 1].count + 2;
+        cell.style.setProperty("--tp-day-track", `${weekTrack} / span ${week.count + 2}`);
+        cell.style.setProperty("--tp-day-column", String(dateIndex % 7 + 1));
+      }
       const dayHeading = el(cell, "div", "tp-day-heading");
+      this.calendarLoadMeter(dayHeading, loads.get(date), "tp-day-load-bar");
       const dateButton = button(
         dayHeading,
         this.calendarView === "day" ? new Intl.DateTimeFormat(this.locale(), {
@@ -9683,19 +10924,12 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
           }).format(utc(date))
         );
       }
+      if (date === day()) dateButton.setAttribute("aria-current", "date");
       dateButton.title = this.w.add + " \xB7 " + date;
       dateButton.setAttribute("aria-label", dateButton.title);
-      const load = dayLoad(tasks, date, this.plugin.settings.dailyCapacityMinutes ?? 480);
-      if (this.calendarView !== "day" && (load.minutes || load.unestimated)) {
-        const summary = el(dayHeading, "div", "tp-day-load");
-        if (load.minutes) el(summary, "span", "tp-day-duration", this.duration(load.minutes));
-        if (load.unestimated) {
-          const unknown = el(summary, "span", "tp-day-unestimated", `?${load.unestimated}`);
-          unknown.title = `${this.w.unestimated}: ${load.unestimated}`;
-          unknown.setAttribute("aria-label", unknown.title);
-        }
-        summary.classList.toggle("tp-load-over", load.over);
-      }
+      const load = loads.get(date);
+      if (this.calendarView !== "day" && (load.minutes || load.unestimated))
+        this.calendarDayLoad(dayHeading, date, load);
       const deadlines = projects.filter((p) => p.due === date);
       for (const project of deadlines)
         button(
@@ -9719,12 +10953,17 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
         );
         mark.dataset.path = task.path;
         mark.dataset.status = task.status;
-        const title3 = el(mark, "span", "tp-continuation-title", task.title);
+        mark.dataset.date = date;
+        const continuation = el(mark, "span", "tp-continuation-symbol");
+        (0, import_obsidian7.setIcon)(continuation, "move-right");
+        continuation.setAttribute("aria-hidden", "true");
+        const heading = el(mark, "span", "tp-task-heading");
+        const title3 = el(heading, "span", "tp-continuation-title", task.title);
         if (task.scheduledTime) title3.dataset.scheduledTime = task.scheduledTime;
-        this.kindBadge(mark, task.kind);
+        this.kindBadge(heading, task.kind);
         if (task.priority !== "normal") {
           mark.classList.add(`tp-${task.priority}-priority`);
-          this.priorityBadge(mark, task.priority);
+          this.priorityBadge(heading, task.priority);
         }
         mark.title = `${task.scheduledTime ? task.scheduledTime + " \xB7 " : ""}${task.title} \xB7 ${this.w.continues} \xB7 ${this.w[task.status]} \xB7 ${this.pretty(task.scheduled)} \u2192 ${this.pretty(task.due)}`;
         mark.setAttribute("aria-label", mark.title);
@@ -9741,11 +10980,27 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
           e.preventDefault();
           this.cancelMonth();
           cell.classList.add("tp-drop-target");
+          if (!this.dragPreview) {
+            this.dragPreview = el(this.contentEl, "div", "tp-drag-preview");
+            this.dragPreview.setAttribute("role", "status");
+          }
+          const label = this.drag.item.calendarRole === "deadline" ? this.w.deadline : this.w.reschedule;
+          this.dragPreview.textContent = `${label} \xB7 ${this.pretty(date)}`;
+          const win = this.contentEl.ownerDocument.defaultView;
+          const box = this.dragPreview.getBoundingClientRect();
+          this.dragPreview.setCssStyles({
+            left: `${Math.max(8, Math.min(e.clientX + 14, win.innerWidth - box.width - 8))}px`,
+            top: `${Math.max(8, Math.min(e.clientY + 18, win.innerHeight - box.height - 8))}px`
+          });
           if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
         }
       });
       cell.addEventListener("dragleave", (e) => {
-        if (!cell.contains(e.relatedTarget)) cell.classList.remove("tp-drop-target");
+        if (!cell.contains(e.relatedTarget)) {
+          cell.classList.remove("tp-drop-target");
+          this.dragPreview?.remove();
+          this.dragPreview = void 0;
+        }
       });
       cell.addEventListener("drop", (e) => {
         e.preventDefault();
@@ -9765,7 +11020,89 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
         row.querySelector(".tp-task-title").title = row.title;
         el(row.querySelector(".tp-task-meta"), "span", "tp-range-dates", range2);
       }
+      const rangeEntries = [
+        ...cell.querySelectorAll(
+          ":scope > .tp-task, :scope > .tp-calendar-continuation"
+        )
+      ].filter((entry) => {
+        const task = rangeBounds.get(entry.dataset.path || "");
+        return task && week?.lanes.has(task.path) && date >= task.scheduled && date <= task.due;
+      });
+      for (const entry of rangeEntries) entry.dataset.calendarRange = "true";
+      if (aligned && week) {
+        const body2 = el(cell, "div", "tp-day-content");
+        for (const child of [...cell.children]) {
+          if (child === dayHeading || child === body2) continue;
+          if (rangeEntries.includes(child)) {
+            const entry = child;
+            entry.classList.add("tp-lane-entry");
+            entry.style.setProperty(
+              "--tp-lane-row",
+              String(week.lanes.get(entry.dataset.path) + 2)
+            );
+          } else body2.appendChild(child);
+        }
+        rangeEntries.sort(
+          (a, b) => week.lanes.get(a.dataset.path) - week.lanes.get(b.dataset.path)
+        );
+        for (const entry of rangeEntries) cell.insertBefore(entry, body2);
+      }
+      if (this.calendarOverview && this.calendarView === "month") {
+        const entries = [
+          ...cell.querySelectorAll(
+            ".tp-task, .tp-calendar-continuation, .tp-calendar-project, .tp-calendar-payment"
+          )
+        ];
+        const hidden = entries.slice(3);
+        for (const entry of hidden) entry.classList.add("tp-overview-hidden");
+        const billing = cell.querySelector(".tp-calendar-billing");
+        if (billing && !billing.querySelector(".tp-calendar-payment:not(.tp-overview-hidden)"))
+          billing.classList.add("tp-overview-hidden");
+        if (hidden.length) {
+          const more = button(
+            cell.querySelector(".tp-day-content") || cell,
+            `${this.w.showMore} \xB7 ${hidden.length}`,
+            () => {
+              this.calendarFocus = date;
+              this.calendarView = "day";
+              this.render();
+              this.main.querySelector("[data-calendar-view=day]")?.focus({ preventScroll: true });
+            },
+            "tp-calendar-more"
+          );
+          more.dataset.calendarMore = date;
+          more.setAttribute(
+            "aria-label",
+            `${this.pretty(date)} \xB7 ${this.w.showMore} \xB7 ${hidden.length}`
+          );
+        }
+      }
+      cell.classList.toggle(
+        "tp-day-empty",
+        !load.minutes && !load.unestimated && !cell.querySelector(
+          ".tp-task, .tp-calendar-continuation, .tp-calendar-project, .tp-calendar-payment"
+        )
+      );
     }
+    const linked = /* @__PURE__ */ new Map();
+    for (const entry of grid.querySelectorAll("[data-calendar-range]")) {
+      const group = linked.get(entry.dataset.path) || [];
+      group.push(entry);
+      linked.set(entry.dataset.path, group);
+    }
+    let highlighted = "";
+    const highlight = (target) => {
+      const node = target;
+      const path = node?.closest("[data-calendar-range]")?.dataset.path || "";
+      if (path === highlighted) return;
+      for (const entry of linked.get(highlighted) || []) entry.classList.remove("tp-linked");
+      for (const entry of linked.get(path) || []) entry.classList.add("tp-linked");
+      highlighted = path;
+    };
+    grid.addEventListener("pointerover", (event) => highlight(event.target));
+    grid.addEventListener("pointerleave", () => highlight(grid.ownerDocument.activeElement));
+    grid.addEventListener("focusin", (event) => highlight(event.target));
+    grid.addEventListener("focusout", (event) => highlight(event.relatedTarget));
   }
   calendarPayment(parent, task, date) {
     const payment = button(
@@ -9814,13 +11151,21 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
       const heading = el(areaSection, "div", "tp-section-heading");
       el(heading, "h2", "", areaNames.get(area) || this.w.noArea);
       const entity = snap.areas.find((a) => a.path === area);
-      if (entity)
+      if (entity) {
         iconButton(
           heading,
           "pencil",
           this.w.editEntity,
           () => new EntityModal(this.plugin, "area", entity).open()
         );
+        iconButton(
+          heading,
+          "trash-2",
+          this.w.deleteArea,
+          () => new DeleteEntityModal(this.plugin, "area", entity).open(),
+          "tp-delete-area"
+        );
+      }
       if (!projects.length) el(areaSection, "p", "tp-muted", this.w.addProject);
       const sorted = projects.sort((a, b) => a.title.localeCompare(b.title));
       const groupKey = "area:" + area;
@@ -9862,6 +11207,13 @@ var PlannerView = class _PlannerView extends import_obsidian7.ItemView {
             "pencil",
             this.w.editEntity,
             () => new EntityModal(this.plugin, "project", project).open()
+          );
+          iconButton(
+            tools,
+            "trash-2",
+            this.w.deleteProject,
+            () => new DeleteEntityModal(this.plugin, "project", project).open(),
+            "tp-delete-project"
           );
           const minutes = own.reduce(
             (n, t) => Math.min(Number.MAX_SAFE_INTEGER, n + loggedMinutes(t)),
@@ -9922,6 +11274,8 @@ var TinyPlanner = class extends import_obsidian8.Plugin {
     const raw = await this.loadData();
     const saved = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
     this.settings = {
+      uiState: plannerState(saved.uiState),
+      formDrafts: formDrafts(saved.formDrafts),
       folder: typeof saved.folder === "string" ? saved.folder : "Planner",
       language: saved.language === "en" ? "en" : "ru",
       dailyCapacityMinutes: typeof saved.dailyCapacityMinutes === "number" && Number.isFinite(saved.dailyCapacityMinutes) ? Math.min(1440, Math.max(0, Math.round(saved.dailyCapacityMinutes))) : 480,
@@ -9975,6 +11329,27 @@ var TinyPlanner = class extends import_obsidian8.Plugin {
     );
   }
   commandsRegistered = false;
+  stateTimer;
+  saveQueue = Promise.resolve();
+  /** Serialize writes so settings and drafts cannot overwrite each other. */
+  saveSettings() {
+    if (this.stateTimer) window.clearTimeout(this.stateTimer);
+    this.stateTimer = void 0;
+    this.saveQueue = this.saveQueue.catch(() => void 0).then(() => this.saveData(this.settings));
+    return this.saveQueue;
+  }
+  scheduleSettings() {
+    if (this.stateTimer) window.clearTimeout(this.stateTimer);
+    this.stateTimer = window.setTimeout(() => {
+      void this.saveSettings().catch((error) => this.error(error));
+    }, 350);
+  }
+  onunload() {
+    if (this.stateTimer) {
+      window.clearTimeout(this.stateTimer);
+      void this.saveSettings().catch((error) => this.error(error));
+    }
+  }
   normalizeUiScale(value) {
     if (value == null || value === "") return 100;
     const n = Number(value);
@@ -9992,6 +11367,15 @@ var TinyPlanner = class extends import_obsidian8.Plugin {
     const w = words(this.settings.language);
     const commands = [
       { id: "open-planner", name: w.openPlanner, callback: () => void this.open() },
+      ...[
+        ["today", w.openToday],
+        ["calendar", w.openCalendar],
+        ["inbox", w.openInbox]
+      ].map(([tab, name]) => ({
+        id: `open-${tab}`,
+        name,
+        callback: () => void this.open(tab)
+      })),
       { id: "quick-add-task", name: w.add, callback: () => new TaskModal(this).open() },
       {
         id: "add-subscription",
@@ -10015,12 +11399,13 @@ var TinyPlanner = class extends import_obsidian8.Plugin {
     console.error("[Tiny Planner]", e);
     new import_obsidian8.Notice(messageText(e instanceof Error ? e.message : String(e), this.settings.language));
   }
-  async open() {
+  async open(tab) {
     let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
     if (!leaf) {
       leaf = this.app.workspace.getLeaf("tab");
       await leaf.setViewState({ type: VIEW_TYPE, active: true });
     }
+    if (tab && leaf.view instanceof PlannerView) leaf.view.navigate(tab);
     await this.app.workspace.revealLeaf(leaf);
   }
   openNote(path) {
@@ -10044,6 +11429,9 @@ var PlannerSettingsTab = class extends import_obsidian8.PluginSettingTab {
   }
   /** Searchable settings for Obsidian 1.13+, while display() remains for 1.7.2–1.12. */
   getSettingDefinitions() {
+    return this.settingDefinitions();
+  }
+  settingDefinitions() {
     this.containerEl.lang = this.planner.settings.language;
     this.containerEl.classList.add("tp-settings");
     const w = words(this.planner.settings.language);
@@ -10056,15 +11444,16 @@ var PlannerSettingsTab = class extends import_obsidian8.PluginSettingTab {
         name: w.folder,
         desc: w.folderHelp,
         render: (setting) => {
-          setting.addText(
-            (field2) => field2.setValue(this.planner.settings.folder).onChange(async (value) => {
+          setting.addText((field2) => {
+            field2.inputEl.setAttribute("aria-label", w.folder);
+            field2.setValue(this.planner.settings.folder).onChange(async (value) => {
               const path = (0, import_obsidian8.normalizePath)(value.trim());
               if (!path || path.startsWith("/") || path.split("/").some((part) => part === ".." || part.startsWith(".")))
                 return;
               this.planner.settings.folder = path;
-              await this.planner.saveData(this.planner.settings);
-            })
-          );
+              await this.planner.saveSettings();
+            });
+          });
         }
       },
       {
@@ -10074,7 +11463,7 @@ var PlannerSettingsTab = class extends import_obsidian8.PluginSettingTab {
             (dropdown) => themedDropdown(dropdown).addOptions({ ru: "\u0420\u0443\u0441\u0441\u043A\u0438\u0439", en: "English" }).setValue(this.planner.settings.language).onChange(async (value) => {
               this.planner.settings.language = value === "en" ? "en" : "ru";
               this.planner.registerCommands();
-              await this.planner.saveData(this.planner.settings);
+              await this.planner.saveSettings();
               refreshViews();
               if ((0, import_obsidian8.requireApiVersion)("1.13.0")) this.update();
               else this.renderLegacySettings();
@@ -10090,7 +11479,7 @@ var PlannerSettingsTab = class extends import_obsidian8.PluginSettingTab {
             (dropdown) => themedDropdown(dropdown).addOptions({ dmy: "DD.MM.YYYY", mdy: "MM/DD/YYYY", iso: "YYYY-MM-DD" }).setValue(this.planner.settings.dateFormat).onChange(async (value) => {
               if (value !== "dmy" && value !== "mdy" && value !== "iso") return;
               this.planner.settings.dateFormat = value;
-              await this.planner.saveData(this.planner.settings);
+              await this.planner.saveSettings();
               refreshViews();
             })
           );
@@ -10099,15 +11488,20 @@ var PlannerSettingsTab = class extends import_obsidian8.PluginSettingTab {
       {
         name: w.capacity,
         render: (setting) => {
-          setting.addText(
-            (field2) => field2.setValue(String(this.planner.settings.dailyCapacityMinutes ?? 480)).onChange(async (value) => {
+          setting.addText((field2) => {
+            field2.inputEl.type = "number";
+            field2.inputEl.min = "0";
+            field2.inputEl.max = "1440";
+            field2.inputEl.step = "1";
+            field2.inputEl.setAttribute("aria-label", w.capacity);
+            field2.setValue(String(this.planner.settings.dailyCapacityMinutes ?? 480)).onChange(async (value) => {
               const n = Number(value);
               if (!value.trim() || !Number.isFinite(n) || n < 0 || n > 1440) return;
               this.planner.settings.dailyCapacityMinutes = Math.round(n);
-              await this.planner.saveData(this.planner.settings);
+              await this.planner.saveSettings();
               refreshViews();
-            })
-          );
+            });
+          });
         }
       },
       {
@@ -10126,7 +11520,7 @@ var PlannerSettingsTab = class extends import_obsidian8.PluginSettingTab {
             }).setValue(String(this.planner.settings.uiScalePercent ?? 100)).onChange(async (value) => {
               this.planner.settings.uiScalePercent = this.planner.normalizeUiScale(value);
               this.planner.applyAppearance();
-              await this.planner.saveData(this.planner.settings);
+              await this.planner.saveSettings();
               refreshViews();
             })
           );
@@ -10147,67 +11541,11 @@ var PlannerSettingsTab = class extends import_obsidian8.PluginSettingTab {
     this.renderLegacySettings();
   }
   renderLegacySettings() {
-    this.containerEl.lang = this.planner.settings.language;
-    this.containerEl.classList.add("tp-settings");
-    const w = words(this.planner.settings.language);
     this.containerEl.replaceChildren();
-    new import_obsidian8.Setting(this.containerEl).setName(w.folder).setDesc(w.folderHelp).addText(
-      (text) => text.setValue(this.planner.settings.folder).onChange(async (value) => {
-        const path = (0, import_obsidian8.normalizePath)(value.trim());
-        if (!path || path.startsWith("/") || path.split("/").some((p) => p === ".." || p.startsWith(".")))
-          return;
-        this.planner.settings.folder = path;
-        await this.planner.saveData(this.planner.settings);
-      })
-    );
-    new import_obsidian8.Setting(this.containerEl).setName(w.language).addDropdown(
-      (d) => themedDropdown(d).addOptions({ ru: "\u0420\u0443\u0441\u0441\u043A\u0438\u0439", en: "English" }).setValue(this.planner.settings.language).onChange(async (value) => {
-        this.planner.settings.language = value === "en" ? "en" : "ru";
-        this.planner.registerCommands();
-        await this.planner.saveData(this.planner.settings);
-        for (const leaf of this.planner.app.workspace.getLeavesOfType(VIEW_TYPE))
-          if (leaf.view instanceof PlannerView) leaf.view.rebuild();
-        this.renderLegacySettings();
-      })
-    );
-    new import_obsidian8.Setting(this.containerEl).setName(w.dateFormat).setDesc(w.dateFormatHelp).addDropdown(
-      (d) => themedDropdown(d).addOptions({ dmy: "DD.MM.YYYY", mdy: "MM/DD/YYYY", iso: "YYYY-MM-DD" }).setValue(this.planner.settings.dateFormat).onChange(async (value) => {
-        if (!["dmy", "mdy", "iso"].includes(value)) return;
-        this.planner.settings.dateFormat = value;
-        await this.planner.saveData(this.planner.settings);
-        for (const leaf of this.planner.app.workspace.getLeavesOfType(VIEW_TYPE))
-          if (leaf.view instanceof PlannerView) leaf.view.rebuild();
-      })
-    );
-    new import_obsidian8.Setting(this.containerEl).setName(w.capacity).addText(
-      (text) => text.setValue(String(this.planner.settings.dailyCapacityMinutes ?? 480)).onChange(async (value) => {
-        const n = Number(value);
-        if (!value.trim() || !Number.isFinite(n) || n < 0 || n > 1440) return;
-        this.planner.settings.dailyCapacityMinutes = Math.round(n);
-        await this.planner.saveData(this.planner.settings);
-        for (const leaf of this.planner.app.workspace.getLeavesOfType(VIEW_TYPE))
-          if (leaf.view instanceof PlannerView) leaf.view.rebuild();
-      })
-    );
-    new import_obsidian8.Setting(this.containerEl).setName(w.uiScale).setDesc(w.uiScaleHelp).addDropdown(
-      (d) => themedDropdown(d).addOptions({
-        "85": "85%",
-        "90": "90%",
-        "95": "95%",
-        "100": "100%",
-        "105": "105%",
-        "110": "110%",
-        "115": "115%"
-      }).setValue(String(this.planner.settings.uiScalePercent ?? 100)).onChange(async (value) => {
-        this.planner.settings.uiScalePercent = this.planner.normalizeUiScale(value);
-        this.planner.applyAppearance();
-        await this.planner.saveData(this.planner.settings);
-        for (const leaf of this.planner.app.workspace.getLeavesOfType(VIEW_TYPE))
-          if (leaf.view instanceof PlannerView) leaf.view.rebuild();
-      })
-    );
-    new import_obsidian8.Setting(this.containerEl).setName(w.import).setDesc(w.importText).addButton(
-      (b) => b.setButtonText(w.importStart).onClick(() => new ImportModal(this.planner).open())
-    );
+    for (const definition of this.settingDefinitions()) {
+      const setting = new import_obsidian8.Setting(this.containerEl).setName(definition.name);
+      if (definition.desc) setting.setDesc(definition.desc);
+      definition.render(setting);
+    }
   }
 };

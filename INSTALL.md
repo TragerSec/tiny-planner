@@ -4,7 +4,7 @@ The manifest targets Obsidian 1.7.2 or newer. Node.js is not required to use the
 
 ## Manual installation or update
 
-1. Extract the release-assets archive.
+1. Download `main.js`, `manifest.json` and `styles.css` from the same release, or extract the source archive and find these files in its root.
 2. Create `<vault>/.obsidian/plugins/tiny-planner/`. If your configuration directory has another name, use it instead of `.obsidian`.
 3. Copy `main.js`, `manifest.json` and `styles.css` directly into that folder. For an update, replace the existing three files together.
 4. Reload Obsidian and enable Tiny Planner in **Settings → Community plugins**.
@@ -20,13 +20,13 @@ After listing approval, search for Tiny Planner in **Settings → Community plug
 
 Create an area and a project, then add a task in Today or Inbox. Click a title to edit its details. Choose your interface language and date format in settings. Read the built-in Guide or [GUIDE.md](GUIDE.md) for behavior and controls.
 
-## Publishing version 1.0.5 from the verified source archive
+## Publishing version 1.0.6 from the verified source archive
 
 Upload the full contents of the verified source archive to the repository default
 branch, including the generated `main.js`, metadata, tests and workflows. GitHub
 Actions checks that the committed bundle exactly matches the TypeScript sources
 before running all quality checks. Wait for the check workflow to succeed before
-creating a new tag named exactly `1.0.5` on that checked commit.
+running an Obsidian preview scan on that same commit. Once both pass, create a new tag named exactly `1.0.6` on it.
 
 The Release workflow repeats the build verification and tests, then publishes
 only `main.js`, `manifest.json` and `styles.css`, with the description from

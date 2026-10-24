@@ -3,7 +3,7 @@ export type Status = (typeof STATUSES)[number];
 export function isActive(status: Status): boolean {
   return status !== 'done' && status !== 'failed';
 }
-export type Kind = 'task' | 'meeting' | 'payment' | 'status' | 'subscription';
+export type Kind = 'task' | 'meeting' | 'contact' | 'payment' | 'status' | 'subscription';
 export type FM = Record<string, unknown>;
 export interface Charge {
   amount: number;
@@ -13,6 +13,7 @@ export interface Charge {
 // Stable period control keys, not rolling day counts.
 export type PeriodDays = 7 | 30 | 90 | 365;
 export interface Resolution {
+  result?: string;
   amount?: number | null;
   currency?: string;
   status: Status;
@@ -24,6 +25,7 @@ export interface Task {
   path: string;
   title: string;
   description: string;
+  result?: string;
   status: Status;
   kind: Kind;
   project: string;
@@ -82,16 +84,17 @@ export const SCHEMA = 1;
 export const TERMINAL = new Set<Status>(['done', 'failed']);
 /** YAML scalar text; malformed collections must not become [object Object]. */
 export function scalarText(value: unknown, fallback = ''): string {
-  if (value instanceof Date) return Number.isFinite(value.valueOf()) ? value.toISOString() : fallback;
-  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint'
+  if (value instanceof Date)
+    return Number.isFinite(value.valueOf()) ? value.toISOString() : fallback;
+  return typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    typeof value === 'bigint'
     ? String(value)
     : fallback;
 }
 export function normalizeStatus(value: unknown): Status {
-  const s = scalarText(value, 'todo')
-    .trim()
-    .toLowerCase()
-    .replace(/[ _]+/g, '-');
+  const s = scalarText(value, 'todo').trim().toLowerCase().replace(/[ _]+/g, '-');
   if (['done', 'completed', 'complete', 'cancelled', 'canceled'].includes(s)) return 'done';
   if (['failed', 'failure'].includes(s)) return 'failed';
   if (['archived', 'archive'].includes(s)) return 'done';
@@ -102,7 +105,7 @@ export function normalizeStatus(value: unknown): Status {
 }
 export function strings(value: unknown): string[] {
   if (value == null) return [];
-  const entries: unknown[] = Array.isArray(value) ? value as unknown[] : [value];
+  const entries: unknown[] = Array.isArray(value) ? (value as unknown[]) : [value];
   return entries.map((v) =>
     typeof v === 'object' && v !== null && 'path' in v ? scalarText(v.path) : scalarText(v),
   );

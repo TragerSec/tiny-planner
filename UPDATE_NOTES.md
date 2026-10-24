@@ -1,3 +1,7 @@
+# Tiny Planner 1.0.6
+
+Contact tasks, separate results, simpler forms and calendar improvements are included in this source release. Replace all three runtime files together; preserve notes and data.json. Minimum Obsidian remains 1.7.2 and schema remains 1. GitHub publication has not been performed here.
+
 # Tiny Planner 1.0.5 — Obsidian review fixes
 
 The previously published 1.0.4 tag is not rewritten. This patch adds the official recommended source lint to CI and fixes the reported static styles, DOM helpers, unnecessary cast, declaration types and :has selectors. Full details and verification are in docs/FINAL_AUDIT.md (AUDIT.md in the install archive).
@@ -28,24 +32,6 @@ Browser checks use mock Obsidian APIs in Chromium. Native Obsidian, physical And
 
 Close Obsidian and back up the existing plugin folder. Copy main.js, manifest.json and styles.css from tiny-planner/ into the vault's .obsidian/plugins/tiny-planner/ folder, preserving the existing data.json, then reopen Obsidian. No local build is required for installation. Use the source archive for review/development. Private context, logs, test vaults, credentials, Git history and dependencies are excluded; all seven original README showcase images remain included.
 
-Calendar work, deadline and continuation cards use the same closed height with up to two title lines. The vertical ellipsis expands metadata and the full title; opening a task also shows its full name. Continuations inherit all five statuses and their colors; Done and Failed titles are struck through. Filters and Undo keep these marks synchronized.
+Compact work, deadline and intermediate continuation cards share title line metrics. Full titles wrap without a line limit; equal visible title line counts produce equal compact-card heights, including cards with type or priority markers. Narrow panes retain at least a 44 px tap target. Ellipsis reveals metadata and actions. Done and Failed titles remain muted and struck through; status rails, filters and Undo stay synchronized.
 
-Calendar appearance: **Minimal view** collapses task context; **Detailed view** expands all task titles, area/project context, time and actions. The choice stays in the open planner view across day/week/month and tab navigation. Outside clicks do not collapse Detailed view. Calendar cards are separated by 7 px on desktop and 8 px in the narrow agenda.
-
-Calendar polish: expanded card context and four equal action buttons align with the title after the checkbox. Project and overdue/deadline labels wrap on their own rows. Period, appearance and visibility controls use consistent button sizing, borders, selected states and keyboard focus, with symmetric responsive groups.
-
-Calendar controls now distinguish their roles: a shared segmented period switch, underlined appearance tabs, and rectangular visibility buttons with state indicators. Thin separators become horizontal in narrow panes; keyboard focus and touch targets remain visible.
-
-Choice menus float above the page and never resize forms or calendar pickers. Search and viewport-adaptive pagination avoid internal scrollbars. Status-type tasks retain a flag; final task deadlines use a calendar-clock icon. Yellow task accents mean In progress, including continuation marks, independently of priority.
-
-The built-in bilingual guide now has a Colors and icons chapter with five status swatches, priority markers and the actual task/action icons. Continuation titles reserve the same empty checkbox gutter as ordinary cards. Only visibility filter buttons use a compact 4 px corner radius and indicators centered 16 px from the leading edge.
-
-Final audit: choice labels follow programmatic changes without firing business handlers; clock choices initially show the saved time. Choice-menu height fitting uses a bounded loop without recursive rendering. Removed unused legacy task-context CSS and date formatting helper. README, guide and technical planning documentation were reconciled with 1.0.4. CI jobs have a 20-minute bound.
-
-Workload now counts each active occurrence when several repeats share a moved date, and includes explicitly reopened occurrences in legacy closed series. Added regression coverage for estimates, missing estimates, overload and closed history.
-
-Calendar cards now retain assigned HH:mm time before the title in Minimal and Detailed views, including continuation marks. No duplicate time appears in the expanded metadata, and untimed tasks keep their previous appearance.
-
-CI follow-up: update the appointment browser scenario to verify the visible calendar title time instead of the removed metadata element. Full npm run test:browser passes (81 UI, 16 theme and 36 mobile cases), with diagnostic captures enabled. Runtime assets are unchanged.
-
-1.0.5 final validation under Node 22.23.3: official recommended source lint and vendor declarations have zero errors/warnings; 264 tests; full browser chain 81+16+36 passed without skipping captures. A clean archive install passed both lockfile installations, pre-build verification, complete check and post-build verification. Both dependency audits report zero known advisories. Three scoped CSS important declarations and vault discovery are intentionally documented recommendations, not claimed as a clean remote scanner result.
+The complete code and visual review is documented in [docs/QUALITY_REVIEW.md](docs/QUALITY_REVIEW.md).

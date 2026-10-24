@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calendarItems, calendarContinuations, dayLoad } from '../src/core/calendar';
+import {
+  calendarItems,
+  calendarContinuations,
+  calendarLanes,
+  dayLoad,
+  dayLoads,
+} from '../src/core/calendar';
 import { analytics } from '../src/core/analytics';
 import { boardItems } from '../src/core/board';
 import { normalizeTask } from '../src/core/normalize';
@@ -171,4 +177,101 @@ test('explicit reopened repeat contributes load even when legacy series status i
   });
   assert.equal(dayLoad([task], '2026-10-02', 480).minutes, 20);
   assert.equal(dayLoad([task], '2026-10-03', 480).minutes, 0);
+});
+
+test('weekly lanes reuse the lowest free row and keep inclusive overlapping intervals apart', () => {
+  const dates = Array.from({ length: 14 }, (_, i) => `2026-10-${String(i + 5).padStart(2, '0')}`);
+  const tasks = [
+    normalizeTask('a.md', { scheduled: '2026-10-05', due: '2026-10-09' }),
+    normalizeTask('b.md', { scheduled: '2026-10-06', due: '2026-10-08' }),
+    normalizeTask('c.md', { scheduled: '2026-10-09', due: '2026-10-11' }),
+    normalizeTask('d.md', { scheduled: '2026-10-10', due: '2026-10-14' }),
+  ];
+  const weeks = calendarLanes(tasks, dates);
+  assert.equal(weeks[0]!.count, 2);
+  assert.equal(weeks[0]!.lanes.get('a.md'), 0);
+  assert.equal(weeks[0]!.lanes.get('b.md'), 1);
+  assert.equal(weeks[0]!.lanes.get('c.md'), 1);
+  assert.equal(weeks[0]!.lanes.get('d.md'), 0);
+  assert.equal(weeks[1]!.count, 1);
+  assert.equal(weeks[1]!.lanes.get('d.md'), 0);
+  assert.deepEqual(calendarLanes([...tasks].reverse(), dates), weeks);
+  const excluded = [
+    normalizeTask('r.md', { scheduled: dates[0], due: dates[5], recurrence: 'FREQ=DAILY' }),
+    normalizeTask('s.md', { scheduled: dates[0], due: dates[5], taskType: 'subscription' }),
+    normalizeTask('one.md', { scheduled: dates[0], due: dates[0] }),
+    normalizeTask('outside.md', { scheduled: '2027-01-01', due: '2027-01-05' }),
+  ];
+  assert.ok(calendarLanes(excluded, dates).every((week) => week.count === 0));
+  assert.deepEqual(calendarLanes(tasks, []), []);
+});
+
+test('weekly lanes stay bounded to visible weeks even for thousands of very long tasks', () => {
+  const tasks = Array.from({ length: 2000 }, (_, i) =>
+    normalizeTask(`task-${i}.md`, { scheduled: '0001-01-01', due: '9999-12-31' }),
+  );
+  const result = calendarLanes(tasks, [
+    '2026-10-05',
+    '2026-10-06',
+    '2026-10-07',
+    '2026-10-08',
+    '2026-10-09',
+    '2026-10-10',
+    '2026-10-11',
+  ]);
+  assert.equal(result.length, 1);
+  assert.equal(result[0]!.count, 2000);
+  assert.equal(new Set(result[0]!.lanes.values()).size, 2000);
+});
+
+test('batched day loads match individual queries for moves, collisions, history, estimates and currencies', () => {
+  const tasks = [
+    normalizeTask('recurring.md', {
+      scheduled: '2026-10-01',
+      recurrence: 'FREQ=DAILY;COUNT=12',
+      plannedMinutes: 23,
+      topMoves: { '2026-10-02': '2026-10-05' },
+      topOccurrences: { '2026-10-03': { status: 'done' }, '2026-10-04': { status: 'failed' } },
+      topSkipped: ['2026-10-06'],
+    }),
+    normalizeTask('weekly.md', {
+      scheduled: '2026-10-01',
+      recurrence: 'FREQ=WEEKLY;BYDAY=MO,FR',
+      plannedMinutes: 0,
+    }),
+    normalizeTask('work.md', {
+      scheduled: '2026-10-01',
+      workDates: ['2026-10-02', '2026-10-05'],
+      due: '2026-10-08',
+      plannedMinutes: 91,
+    }),
+    normalizeTask('due.md', { due: '2026-10-07', plannedMinutes: 17 }),
+    normalizeTask('unknown.md', { scheduled: '2026-10-05' }),
+    normalizeTask('closed.md', { scheduled: '2026-10-05', status: 'done', plannedMinutes: 100 }),
+    normalizeTask('contact.md', {
+      taskType: 'contact',
+      scheduled: '2026-10-05',
+      plannedMinutes: 10,
+    }),
+    normalizeTask('payment.md', {
+      taskType: 'payment',
+      scheduled: '2026-10-05',
+      amount: 200,
+      plannedMinutes: 60,
+    }),
+    normalizeTask('subscription.md', {
+      taskType: 'subscription',
+      scheduled: '2026-10-05',
+      plannedMinutes: 60,
+    }),
+  ];
+  const dates = Array.from({ length: 15 }, (_, i) => `2026-10-${String(i + 1).padStart(2, '0')}`);
+  for (const capacity of [0, 30, 480]) {
+    const loads = dayLoads(tasks, dates, capacity);
+    assert.deepEqual(
+      [...loads.values()],
+      dates.map((date) => dayLoad(tasks, date, capacity)),
+    );
+  }
+  assert.equal(dayLoads(tasks, [], 0).size, 0);
 });

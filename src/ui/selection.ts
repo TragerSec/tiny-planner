@@ -21,7 +21,7 @@ export function enhanceSelect(native: HTMLSelectElement): void {
   native.dataset.tpSelection = 'true';
   const doc = native.ownerDocument;
   const w = words(parent.closest<HTMLElement>('[lang]')?.lang === 'en' ? 'en' : 'ru');
-  const wrapper = parent.createDiv( { cls: 'tp-select-control' });
+  const wrapper = parent.createDiv({ cls: 'tp-select-control' });
   parent.insertBefore(wrapper, native);
   wrapper.append(native);
   native.classList.add('tp-native-select');
@@ -31,11 +31,11 @@ export function enhanceSelect(native: HTMLSelectElement): void {
   trigger.type = 'button';
   trigger.setAttribute('aria-haspopup', 'listbox');
   trigger.setAttribute('aria-expanded', 'false');
-  const text = trigger.createSpan( { cls: 'tp-select-value' });
-  const arrow = trigger.createSpan( { cls: 'tp-select-arrow' });
+  const text = trigger.createSpan({ cls: 'tp-select-value' });
+  const arrow = trigger.createSpan({ cls: 'tp-select-arrow' });
   arrow.setAttribute('aria-hidden', 'true');
   setIcon(arrow, 'chevron-down');
-  const panel = wrapper.createDiv( { cls: 'tp-select-panel' });
+  const panel = wrapper.createDiv({ cls: 'tp-select-panel' });
   panel.hidden = true;
   panel.setAttribute('popover', 'manual');
   const search = panel.createEl('input', { cls: 'tp-select-search' });
@@ -43,12 +43,16 @@ export function enhanceSelect(native: HTMLSelectElement): void {
   search.placeholder = w.searchOptions;
   search.setAttribute('aria-label', w.searchOptions);
   search.autocomplete = 'off';
-  const list = panel.createDiv( { cls: 'tp-select-options' });
+  search.setAttribute('role', 'combobox');
+  search.setAttribute('aria-autocomplete', 'list');
+  search.setAttribute('aria-expanded', 'false');
+  const list = panel.createDiv({ cls: 'tp-select-options' });
   list.id = `tp-select-${nextId++}`;
   list.setAttribute('role', 'listbox');
   list.tabIndex = -1;
   trigger.setAttribute('aria-controls', list.id);
-  const pager = panel.createDiv( { cls: 'tp-select-pager' });
+  search.setAttribute('aria-controls', list.id);
+  const pager = panel.createDiv({ cls: 'tp-select-pager' });
   const previous = pager.createEl('button', { text: '‹' });
   previous.type = 'button';
   previous.setAttribute('aria-label', w.previousOptions);
@@ -59,6 +63,7 @@ export function enhanceSelect(native: HTMLSelectElement): void {
   next.setAttribute('aria-label', w.nextOptions);
   let active = 0;
   let matches: HTMLOptionElement[] = [];
+  let matchQuery: string | undefined;
   let controller: AbortController | undefined;
   let detached: MutationObserver | undefined;
   const preferredPageSize = native.closest('.tp-picker-popup') ? 5 : 8;
@@ -81,6 +86,8 @@ export function enhanceSelect(native: HTMLSelectElement): void {
     sized?.disconnect();
     sized = undefined;
     trigger.setAttribute('aria-expanded', 'false');
+    search.setAttribute('aria-expanded', 'false');
+    search.removeAttribute('aria-activedescendant');
     controller?.abort();
     controller = undefined;
     detached?.disconnect();
@@ -130,18 +137,25 @@ export function enhanceSelect(native: HTMLSelectElement): void {
   };
   const draw = () => {
     const query = search.value.trim().toLocaleLowerCase();
-    matches = [...native.options].filter(
-      (o) => !o.hidden && !o.disabled && (!query || o.text.toLocaleLowerCase().includes(query)),
-    );
+    if (matchQuery !== query) {
+      matches = [...native.options].filter(
+        (o) => !o.hidden && !o.disabled && (!query || o.text.toLocaleLowerCase().includes(query)),
+      );
+      matchQuery = query;
+    }
     active = Math.min(Math.max(0, active), Math.max(0, matches.length - 1));
     const page = Math.floor(active / pageSize);
     list.replaceChildren();
-    if (!matches.length) list.createDiv( { cls: 'tp-select-empty', text: w.noOptions });
-    for (const option of matches.slice(page * pageSize, (page + 1) * pageSize)) {
-      const index = matches.indexOf(option);
-      const node = list.createDiv( { cls: 'tp-select-option', text: option.text });
+    if (!matches.length) list.createDiv({ cls: 'tp-select-empty', text: w.noOptions });
+    for (const [offset, option] of matches
+      .slice(page * pageSize, (page + 1) * pageSize)
+      .entries()) {
+      const index = page * pageSize + offset;
+      const node = list.createDiv({ cls: 'tp-select-option', text: option.text });
       node.id = `${list.id}-${index}`;
       node.setAttribute('role', 'option');
+      node.setAttribute('aria-posinset', String(index + 1));
+      node.setAttribute('aria-setsize', String(matches.length));
       node.setAttribute('aria-selected', String(option.value === native.value));
       node.classList.toggle('tp-option-active', index === active);
       node.addEventListener('pointerdown', (e) => e.preventDefault());
@@ -151,8 +165,10 @@ export function enhanceSelect(native: HTMLSelectElement): void {
         choose(option);
       });
     }
-    if (matches.length) list.setAttribute('aria-activedescendant', `${list.id}-${active}`);
-    else list.removeAttribute('aria-activedescendant');
+    for (const owner of [list, search]) {
+      if (matches.length) owner.setAttribute('aria-activedescendant', `${list.id}-${active}`);
+      else owner.removeAttribute('aria-activedescendant');
+    }
     pager.hidden = matches.length <= pageSize;
     previous.disabled = page === 0;
     next.disabled = (page + 1) * pageSize >= matches.length;
@@ -163,6 +179,7 @@ export function enhanceSelect(native: HTMLSelectElement): void {
     place();
   };
   const sync = () => {
+    matchQuery = undefined;
     text.textContent = native.selectedOptions[0]?.text || '';
     trigger.disabled = native.disabled;
     if (native.disabled && !panel.hidden) close();
@@ -179,6 +196,7 @@ export function enhanceSelect(native: HTMLSelectElement): void {
     openMenus.get(doc)?.();
     openMenus.set(doc, dismiss);
     search.value = '';
+    matchQuery = undefined;
     pageSize = preferredPageSize;
     search.hidden = native.options.length <= pageSize;
     active = Math.max(
@@ -190,6 +208,7 @@ export function enhanceSelect(native: HTMLSelectElement): void {
     panel.hidden = false;
     panel.showPopover?.();
     trigger.setAttribute('aria-expanded', 'true');
+    search.setAttribute('aria-expanded', 'true');
     render();
     controller = new win.AbortController();
     win.addEventListener('resize', resize, { signal: controller.signal });
@@ -285,7 +304,7 @@ export function enhanceSelect(native: HTMLSelectElement): void {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ['disabled', 'label', 'selected', 'aria-label', 'title', 'value'],
+    attributeFilter: ['disabled', 'hidden', 'label', 'selected', 'aria-label', 'title', 'value'],
   });
   sync();
 }

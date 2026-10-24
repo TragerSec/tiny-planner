@@ -816,3 +816,154 @@ test('Undo retains only the latest 50 deletions and restores their original cont
     assert.equal(await app.vault.read(file), note.text);
   }
 });
+
+test('task result is independent of the brief, saves atomically and survives reopening', async () => {
+  const { app, repo, service } = fixture();
+  const file = await service.createTask(
+    draft({ description: 'Input', result: 'Initial findings' }),
+  );
+  let task = repo.snapshot().tasks[0]!;
+  await service.saveTask(
+    taskItem(task, day()),
+    draft({ description: 'Input', result: 'Done\nhttps://example.org/report' }),
+    12,
+    'done',
+    true,
+  );
+  task = repo.snapshot().tasks[0]!;
+  assert.equal(task.description, 'Input');
+  assert.equal(task.result, 'Done\nhttps://example.org/report');
+  assert.equal(frontmatter(await app.vault.read(file)).result, task.result);
+  await service.status(taskItem(task, day()), 'todo');
+  assert.equal(repo.snapshot().tasks[0]!.result, task.result);
+  await service.undo();
+  await service.undo();
+  assert.equal(repo.snapshot().tasks[0]!.result, 'Initial findings');
+  assert.equal(repo.snapshot().tasks[0]!.description, 'Input');
+});
+
+test('each recurring occurrence keeps its own result, including the initial occurrence', async () => {
+  const { repo, service } = fixture();
+  const base = draft({ recurrence: 'FREQ=DAILY;COUNT=3', description: 'Daily brief' });
+  await service.createTask({ ...base, result: 'First finding' });
+  let task = repo.snapshot().tasks[0]!;
+  assert.equal(task.occurrences['2026-10-02']?.result, 'First finding');
+  assert.equal(task.result, '');
+  const second = expand(task, '2026-10-03', '2026-10-03')[0]!;
+  await service.saveTask(second, { ...base, result: 'Second finding' }, 10, 'done', true);
+  task = repo.snapshot().tasks[0]!;
+  assert.equal(task.occurrences['2026-10-02']?.result, 'First finding');
+  assert.equal(task.occurrences['2026-10-03']?.result, 'Second finding');
+  assert.equal(task.occurrences['2026-10-04']?.result, undefined);
+  assert.equal(task.description, 'Daily brief');
+  await service.undo();
+  assert.equal(repo.snapshot().tasks[0]!.occurrences['2026-10-03'], undefined);
+});
+
+test('result validation and concurrent edits cannot silently overwrite saved findings', async () => {
+  const { repo, service } = fixture();
+  await assert.rejects(service.createTask(draft({ result: 'x'.repeat(100001) })), /Result must/);
+  await service.createTask(draft({ result: 'Original' }));
+  const stale = taskItem(repo.snapshot().tasks[0]!, day());
+  await service.patch(stale.task.path, (fm) => {
+    fm.result = 'External finding';
+  });
+  await assert.rejects(
+    service.saveTask(stale, draft({ result: 'Stale finding' }), 0, 'done', true),
+    /changed elsewhere/,
+  );
+  assert.equal(repo.snapshot().tasks[0]!.result, 'External finding');
+  await service.editTask(stale.task.path, draft({ title: 'Renamed' }));
+  assert.equal(repo.snapshot().tasks[0]!.result, 'External finding');
+});
+
+test('legacy import reads in bounded batches and preserves source order', async () => {
+  const { app, importer, repo } = fixture();
+  for (let i = 0; i < 60; i++)
+    await put(app, `Tasks/${i}.md`, { type: 'task', title: `Task ${i}`, status: 'todo' });
+  const read = app.vault.cachedRead.bind(app.vault);
+  let active = 0,
+    peak = 0;
+  app.vault.cachedRead = async (file) => {
+    active++;
+    peak = Math.max(peak, active);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      return await read(file);
+    } finally {
+      active--;
+    }
+  };
+  const result = await importer.run();
+  assert.equal(result.tasks, 60);
+  assert.ok(peak > 1 && peak <= 24);
+  assert.deepEqual(
+    repo.snapshot().tasks.map((t) => t.title),
+    Array.from({ length: 60 }, (_, i) => `Task ${i}`),
+  );
+  assert.equal((await importer.run()).tasks, 0);
+});
+
+test('legacy import completes source reads before creating any copies', async () => {
+  const { app, importer } = fixture();
+  await put(app, 'Tasks/legacy.md', { type: 'task', title: 'Legacy', status: 'todo' });
+  const broken = await app.vault.create('Notes/broken.md', 'An unrelated note');
+  const before = app.vault.getMarkdownFiles().map((file) => file.path);
+  const read = app.vault.cachedRead.bind(app.vault);
+  app.vault.cachedRead = async (file) => {
+    if (file.path === broken.path) throw new Error('Read failed');
+    return read(file);
+  };
+  await assert.rejects(importer.run(), /Read failed/);
+  assert.deepEqual(
+    app.vault.getMarkdownFiles().map((file) => file.path),
+    before,
+  );
+});
+
+test('repository releases completed read guards for ordinary notes and read errors', async () => {
+  const { app, repo } = fixture();
+  for (let i = 0; i < 100; i++) await app.vault.create(`Notes/${i}.md`, 'An ordinary note');
+  await repo.load();
+  assert.equal((repo as any).revisions.size, 0);
+  const file = app.vault.getMarkdownFiles()[0]!;
+  app.vault.read = async () => {
+    throw new Error('Read failed');
+  };
+  await assert.rejects(repo.refresh(file), /Read failed/);
+  assert.equal((repo as any).revisions.size, 0);
+});
+
+test('unique read tokens reject stale completions after newer reads, removal and recreation', async () => {
+  const { app, repo } = fixture();
+  const file = await put(app, 'Planner/Tasks/race.md', {
+    topSchema: 1,
+    type: 'task',
+    title: 'Initial',
+  });
+  const pending: ((text: string) => void)[] = [];
+  app.vault.read = () => new Promise<string>((resolve) => pending.push(resolve));
+  const text = (title: string) => '---\ntopSchema: 1\ntype: task\ntitle: ' + title + '\n---\n';
+  const older = repo.refresh(file, false),
+    newer = repo.refresh(file, false);
+  pending[1]!(text('Newer'));
+  await newer;
+  pending[0]!(text('Older'));
+  await older;
+  assert.equal(repo.snapshot().tasks[0]!.title, 'Newer');
+  assert.equal((repo as any).revisions.size, 0);
+  const removed = repo.refresh(file, false);
+  repo.remove('Planner/Tasks');
+  pending[2]!(text('Deleted'));
+  await removed;
+  assert.equal(repo.snapshot().tasks.length, 0);
+  const stale = repo.refresh(file, false);
+  repo.remove(file.path);
+  const recreated = repo.refresh(file, false);
+  pending[4]!(text('Recreated'));
+  await recreated;
+  pending[3]!(text('Stale'));
+  await stale;
+  assert.equal(repo.snapshot().tasks[0]!.title, 'Recreated');
+  assert.equal((repo as any).revisions.size, 0);
+});

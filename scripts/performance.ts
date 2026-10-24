@@ -152,6 +152,40 @@ async function measure(fn: () => any, n = 3) {
     await view.onClose();
     dom.window.close();
   }
+  if (mode === 'all' || mode === 'search') {
+    const dom = mock.makeDOM();
+    let ledgerReads = 0;
+    const ledger = Object.fromEntries(
+      Array.from({ length: 100 }, (_, i) => [
+        String(i),
+        { status: 'done', result: `Historical evidence ${i}` },
+      ]),
+    );
+    const tasks = Array.from({ length: 1000 }, (_, i) => {
+      const item = task(i);
+      Object.defineProperty(item, 'occurrences', {
+        get: () => {
+          ledgerReads++;
+          return ledger;
+        },
+      });
+      return item;
+    });
+    const snapshot = { tasks, projects: [], areas: [] };
+    const plugin: any = { settings: { language: 'ru' }, repo: { snapshot: () => snapshot } };
+    const m = await measure(() => {
+      const view = new PlannerView({ app: mock.makeApp() } as any, plugin) as any;
+      ledgerReads = 0;
+      for (let i = 0; i < 20; i++) {
+        view.query = `evidence ${i}`;
+        view.filtered();
+      }
+      return { ledgerReads };
+    }, 5);
+    output.search = { tasks: 1000, historyPerTask: 100, queries: 20, ...m };
+    console.log('search', JSON.stringify(output.search));
+    dom.window.close();
+  }
   output.peakRSSMiB = process.resourceUsage().maxRSS / 1024;
   await fs.writeFile(`.perf-work/perf-${phase}-${mode}.json`, JSON.stringify(output, null, 2));
 })().catch((e) => {

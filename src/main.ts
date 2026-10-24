@@ -17,12 +17,15 @@ import { TaskModal, ImportModal, SubscriptionModal } from './ui/modals';
 import { DateFormat } from './core/dates';
 import { Project } from './core/model';
 import { words, messageText } from './ui/i18n';
+import { plannerState, formDrafts, PlannerState, FormDraft, PlannerTab } from './ui/state';
 import { enhanceSelect } from './ui/selection';
 function themedDropdown<T extends { selectEl: HTMLSelectElement }>(dropdown: T): T {
   enhanceSelect(dropdown.selectEl);
   return dropdown;
 }
 export interface PlannerSettings {
+  uiState?: PlannerState;
+  formDrafts?: Record<string, FormDraft>;
   folder: string;
   language: 'ru' | 'en';
   dateFormat: DateFormat;
@@ -45,6 +48,8 @@ export default class TinyPlanner extends Plugin {
     const saved: Record<string, unknown> =
       raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
     this.settings = {
+      uiState: plannerState(saved.uiState),
+      formDrafts: formDrafts(saved.formDrafts),
       folder: typeof saved.folder === 'string' ? saved.folder : 'Planner',
       language: saved.language === 'en' ? 'en' : 'ru',
       dailyCapacityMinutes:
@@ -105,6 +110,27 @@ export default class TinyPlanner extends Plugin {
     );
   }
   private commandsRegistered = false;
+  private stateTimer?: number;
+  private saveQueue: Promise<void> = Promise.resolve();
+  /** Serialize writes so settings and drafts cannot overwrite each other. */
+  saveSettings(): Promise<void> {
+    if (this.stateTimer) window.clearTimeout(this.stateTimer);
+    this.stateTimer = undefined;
+    this.saveQueue = this.saveQueue.catch(() => undefined).then(() => this.saveData(this.settings));
+    return this.saveQueue;
+  }
+  scheduleSettings(): void {
+    if (this.stateTimer) window.clearTimeout(this.stateTimer);
+    this.stateTimer = window.setTimeout(() => {
+      void this.saveSettings().catch((error) => this.error(error));
+    }, 350);
+  }
+  onunload(): void {
+    if (this.stateTimer) {
+      window.clearTimeout(this.stateTimer);
+      void this.saveSettings().catch((error) => this.error(error));
+    }
+  }
   normalizeUiScale(value: unknown): number {
     if (value == null || value === '') return 100;
     const n = Number(value);
@@ -122,6 +148,17 @@ export default class TinyPlanner extends Plugin {
     const w = words(this.settings.language);
     const commands = [
       { id: 'open-planner', name: w.openPlanner, callback: () => void this.open() },
+      ...(
+        [
+          ['today', w.openToday],
+          ['calendar', w.openCalendar],
+          ['inbox', w.openInbox],
+        ] as const
+      ).map(([tab, name]) => ({
+        id: `open-${tab}`,
+        name,
+        callback: () => void this.open(tab),
+      })),
       { id: 'quick-add-task', name: w.add, callback: () => new TaskModal(this).open() },
       {
         id: 'add-subscription',
@@ -145,12 +182,13 @@ export default class TinyPlanner extends Plugin {
     console.error('[Tiny Planner]', e);
     new Notice(messageText(e instanceof Error ? e.message : String(e), this.settings.language));
   }
-  async open(): Promise<void> {
+  async open(tab?: PlannerTab): Promise<void> {
     let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
     if (!leaf) {
       leaf = this.app.workspace.getLeaf('tab');
       await leaf.setViewState({ type: VIEW_TYPE, active: true });
     }
+    if (tab && leaf.view instanceof PlannerView) leaf.view.navigate(tab);
     await this.app.workspace.revealLeaf(leaf);
   }
   openNote(path: string): void {
@@ -175,6 +213,13 @@ class PlannerSettingsTab extends PluginSettingTab {
   }
   /** Searchable settings for Obsidian 1.13+, while display() remains for 1.7.2–1.12. */
   getSettingDefinitions(): SettingDefinitionItem[] {
+    return this.settingDefinitions();
+  }
+  private settingDefinitions(): {
+    name: string;
+    desc?: string;
+    render: (setting: Setting) => void;
+  }[] {
     this.containerEl.lang = this.planner.settings.language;
     this.containerEl.classList.add('tp-settings');
     const w = words(this.planner.settings.language);
@@ -187,7 +232,8 @@ class PlannerSettingsTab extends PluginSettingTab {
         name: w.folder,
         desc: w.folderHelp,
         render: (setting) => {
-          setting.addText((field) =>
+          setting.addText((field) => {
+            field.inputEl.setAttribute('aria-label', w.folder);
             field.setValue(this.planner.settings.folder).onChange(async (value) => {
               const path = normalizePath(value.trim());
               if (
@@ -197,9 +243,9 @@ class PlannerSettingsTab extends PluginSettingTab {
               )
                 return;
               this.planner.settings.folder = path;
-              await this.planner.saveData(this.planner.settings);
-            }),
-          );
+              await this.planner.saveSettings();
+            });
+          });
         },
       },
       {
@@ -212,7 +258,7 @@ class PlannerSettingsTab extends PluginSettingTab {
               .onChange(async (value) => {
                 this.planner.settings.language = value === 'en' ? 'en' : 'ru';
                 this.planner.registerCommands();
-                await this.planner.saveData(this.planner.settings);
+                await this.planner.saveSettings();
                 refreshViews();
                 if (requireApiVersion('1.13.0')) this.update();
                 else this.renderLegacySettings();
@@ -231,7 +277,7 @@ class PlannerSettingsTab extends PluginSettingTab {
               .onChange(async (value) => {
                 if (value !== 'dmy' && value !== 'mdy' && value !== 'iso') return;
                 this.planner.settings.dateFormat = value;
-                await this.planner.saveData(this.planner.settings);
+                await this.planner.saveSettings();
                 refreshViews();
               }),
           );
@@ -240,17 +286,22 @@ class PlannerSettingsTab extends PluginSettingTab {
       {
         name: w.capacity,
         render: (setting) => {
-          setting.addText((field) =>
+          setting.addText((field) => {
+            field.inputEl.type = 'number';
+            field.inputEl.min = '0';
+            field.inputEl.max = '1440';
+            field.inputEl.step = '1';
+            field.inputEl.setAttribute('aria-label', w.capacity);
             field
               .setValue(String(this.planner.settings.dailyCapacityMinutes ?? 480))
               .onChange(async (value) => {
                 const n = Number(value);
                 if (!value.trim() || !Number.isFinite(n) || n < 0 || n > 1440) return;
                 this.planner.settings.dailyCapacityMinutes = Math.round(n);
-                await this.planner.saveData(this.planner.settings);
+                await this.planner.saveSettings();
                 refreshViews();
-              }),
-          );
+              });
+          });
         },
       },
       {
@@ -272,7 +323,7 @@ class PlannerSettingsTab extends PluginSettingTab {
               .onChange(async (value) => {
                 this.planner.settings.uiScalePercent = this.planner.normalizeUiScale(value);
                 this.planner.applyAppearance();
-                await this.planner.saveData(this.planner.settings);
+                await this.planner.saveSettings();
                 refreshViews();
               }),
           );
@@ -293,94 +344,11 @@ class PlannerSettingsTab extends PluginSettingTab {
     this.renderLegacySettings();
   }
   private renderLegacySettings(): void {
-    this.containerEl.lang = this.planner.settings.language;
-    this.containerEl.classList.add('tp-settings');
-    const w = words(this.planner.settings.language);
     this.containerEl.replaceChildren();
-    new Setting(this.containerEl)
-      .setName(w.folder)
-      .setDesc(w.folderHelp)
-      .addText((text) =>
-        text.setValue(this.planner.settings.folder).onChange(async (value) => {
-          const path = normalizePath(value.trim());
-          if (
-            !path ||
-            path.startsWith('/') ||
-            path.split('/').some((p) => p === '..' || p.startsWith('.'))
-          )
-            return;
-          this.planner.settings.folder = path;
-          await this.planner.saveData(this.planner.settings);
-        }),
-      );
-    new Setting(this.containerEl).setName(w.language).addDropdown((d) =>
-      themedDropdown(d)
-        .addOptions({ ru: 'Русский', en: 'English' })
-        .setValue(this.planner.settings.language)
-        .onChange(async (value) => {
-          this.planner.settings.language = value === 'en' ? 'en' : 'ru';
-          this.planner.registerCommands();
-          await this.planner.saveData(this.planner.settings);
-          for (const leaf of this.planner.app.workspace.getLeavesOfType(VIEW_TYPE))
-            if (leaf.view instanceof PlannerView) leaf.view.rebuild();
-          this.renderLegacySettings();
-        }),
-    );
-    new Setting(this.containerEl)
-      .setName(w.dateFormat)
-      .setDesc(w.dateFormatHelp)
-      .addDropdown((d) =>
-        themedDropdown(d)
-          .addOptions({ dmy: 'DD.MM.YYYY', mdy: 'MM/DD/YYYY', iso: 'YYYY-MM-DD' })
-          .setValue(this.planner.settings.dateFormat)
-          .onChange(async (value) => {
-            if (!['dmy', 'mdy', 'iso'].includes(value)) return;
-            this.planner.settings.dateFormat = value as DateFormat;
-            await this.planner.saveData(this.planner.settings);
-            for (const leaf of this.planner.app.workspace.getLeavesOfType(VIEW_TYPE))
-              if (leaf.view instanceof PlannerView) leaf.view.rebuild();
-          }),
-      );
-    new Setting(this.containerEl).setName(w.capacity).addText((text) =>
-      text
-        .setValue(String(this.planner.settings.dailyCapacityMinutes ?? 480))
-        .onChange(async (value) => {
-          const n = Number(value);
-          if (!value.trim() || !Number.isFinite(n) || n < 0 || n > 1440) return;
-          this.planner.settings.dailyCapacityMinutes = Math.round(n);
-          await this.planner.saveData(this.planner.settings);
-          for (const leaf of this.planner.app.workspace.getLeavesOfType(VIEW_TYPE))
-            if (leaf.view instanceof PlannerView) leaf.view.rebuild();
-        }),
-    );
-    new Setting(this.containerEl)
-      .setName(w.uiScale)
-      .setDesc(w.uiScaleHelp)
-      .addDropdown((d) =>
-        themedDropdown(d)
-          .addOptions({
-            '85': '85%',
-            '90': '90%',
-            '95': '95%',
-            '100': '100%',
-            '105': '105%',
-            '110': '110%',
-            '115': '115%',
-          })
-          .setValue(String(this.planner.settings.uiScalePercent ?? 100))
-          .onChange(async (value) => {
-            this.planner.settings.uiScalePercent = this.planner.normalizeUiScale(value);
-            this.planner.applyAppearance();
-            await this.planner.saveData(this.planner.settings);
-            for (const leaf of this.planner.app.workspace.getLeavesOfType(VIEW_TYPE))
-              if (leaf.view instanceof PlannerView) leaf.view.rebuild();
-          }),
-      );
-    new Setting(this.containerEl)
-      .setName(w.import)
-      .setDesc(w.importText)
-      .addButton((b) =>
-        b.setButtonText(w.importStart).onClick(() => new ImportModal(this.planner).open()),
-      );
+    for (const definition of this.settingDefinitions()) {
+      const setting = new Setting(this.containerEl).setName(definition.name);
+      if (definition.desc) setting.setDesc(definition.desc);
+      definition.render(setting);
+    }
   }
 }

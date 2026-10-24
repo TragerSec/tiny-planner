@@ -56,47 +56,50 @@ export function manual(
   };
   section(t('Area → project → task', 'Сфера → проект → задача'), [
     t(
-      'An area is an ongoing part of life, such as Home or Work. A project groups work toward an outcome, such as Moving home. A task is a specific action. Tasks without a project appear in Inbox. Changing a project status does not change its tasks.',
-      'Сфера — часть жизни, например «Дом» или «Работа». Проект объединяет дела ради результата, например «Переезд». Задача — конкретное действие. Задачи без проекта попадают во «Входящие». Смена статуса проекта не меняет статусы его задач.',
+      'Areas group projects; projects group tasks. Tasks without a recognized project appear in Inbox. Create a task with just a title and add details later.',
+      'Сферы объединяют проекты, проекты — задачи. Задачи без распознанного проекта попадают во «Входящие». Для создания задачи достаточно названия; остальное можно добавить позже.',
+    ),
+  ]);
+  section(t('Filters, deletion and closed work', 'Фильтры, удаление и закрытые задачи'), [
+    t(
+      'Filters beside search narrow the displayed list by area or project. Remove a filter label or clear all filters. The project field in quick entry assigns the new task; it does not filter the list.',
+      '«Фильтры» рядом с поиском отбирают записи по сфере и проекту. Снимите отдельную метку или сбросьте отбор. Проект в строке добавления назначается новой задаче и не фильтрует список.',
+    ),
+    t(
+      'Deleting an area or project preserves linked notes. Undo restores the deleted note and its links. Failed overdue work stays in history rather than returning to Today.',
+      'Удаление сферы или проекта сохраняет связанные заметки. Отмена восстанавливает удалённую заметку и связи. Просроченные задачи со статусом «Не выполнено» остаются в истории и не возвращаются в «Сегодня».',
     ),
   ]);
   section(t('Capture, dates and time', 'Добавление задач, даты и время'), [
     t(
-      'The panel button at the top of the left menu collapses or expands navigation. When collapsed, the same chevron moves to the page header and the content uses the full width. It remains available in every section, including Guide. The choice lasts while this planner view is open. Enter a title and date in quick entry and press Enter or +. Options reveals project, time and status. The sliders button opens the full form. Click a task title to edit it. A document icon beside the task title indicates a description; hover it for a tooltip. The calendar button beside each date lets you choose a day, month and year, use today or clear the field. Typed dates may omit separators: 07102026 in DD.MM.YYYY means 07.10.2026. Settings choose the date order; ISO dates can be pasted in any mode.',
-      'Кнопка вверху левого меню сворачивает и раскрывает его. В свёрнутом состоянии та же кнопка перемещается в заголовок страницы, а содержимое занимает всю ширину. Она доступна в каждом разделе, включая инструкцию. Выбор сохраняется, пока открыта эта вкладка планнера. Введите название и дату в строку добавления и нажмите Enter или +. «Параметры» раскрывают проект, время и статус. Кнопка с ползунками открывает полную форму. Нажмите на название задачи, чтобы открыть форму. Значок документа рядом с названием отмечает наличие описания; при наведении появляется подсказка. Значок календаря рядом с датой позволяет выбрать день, месяц и год, перейти к сегодняшнему дню или очистить поле. Дату можно вводить без разделителей: 07102026 в формате ДД.ММ.ГГГГ означает 07.10.2026. Формат меняется в настройках; даты ISO можно вставлять при любом формате.',
+      'Enter a title and press Enter or +. Options reveals quick-entry fields; the sliders button opens the full form. Click a task title to edit it. Contact means writing or calling someone.',
+      'Введите название и нажмите Enter или +. «Параметры» раскрывают дополнительные поля, кнопка с ползунками открывает полную форму. Нажмите название для редактирования. Тип «Связаться» — написать или позвонить человеку.',
     ),
-    w.appointmentHelp,
     t(
-      'Calendar cells put Done first, then Failed, then unfinished tasks; each group is ordered by time. Other day lists put timed tasks earliest first, followed by untimed tasks. Series time applies to all repeats and survives moves. A red ! marks high priority with a gentle pulse; a white down arrow marks low priority; closed tasks and reduced motion keep a static badge. Overdue tasks are red and labelled Overdue. Payment uses a $ marker, Meeting uses a people icon and Status uses a flag. The type marker and the high-priority ! can appear together. Calendar cards have equal closed heights and show the checkbox, assigned time before the title when provided, up to two title lines and uniform icons. Assigned time remains visible in Minimal view and on continuation marks. The vertical ellipsis reveals the full title, area/project, estimates and actions. Minimal view collapses these details; Detailed view expands every task. The choice stays with the open planner view across Day, Week and Month. Subtle intermediate-day marks connect start and deadline without checkboxes or workload and follow the task status, including green strikethrough for completed work. Calendar cards stay compact and all remain visible; only the whole planner page scrolls. Narrow panes use a readable dated agenda.',
-      'В календаре сначала идут выполненные задачи, затем не выполненные и открытые; внутри группы они упорядочены по времени. В остальных списках дня сначала идут задачи со временем, затем без него. Время серии относится ко всем повторам и сохраняется при переносе. Красный значок ! отмечает высокий приоритет, белая стрелка вниз — низкий. Маркер высокого приоритета мягко пульсирует; у закрытых задач и при отключённой анимации остаётся неподвижным. Просроченные задачи выделены красным и подписаны «Просрочено». В календаре закрытые карточки имеют одинаковую высоту: чекбокс, указанное время перед названием, до двух строк названия и значки одного размера. Время видно и в минималистичном виде, и на промежуточных отметках. Вертикальное многоточие раскрывает полное название, сферу, проект, оценку длительности и действия. «Минималистичный вид» сворачивает подробности, «Подробный вид» раскрывает все задачи. Выбор сохраняется в открытой вкладке для дня, недели и месяца. Приглушённые отметки между стартом и дедлайном не имеют чекбоксов и не увеличивают нагрузку. Они наследуют статус задачи: выполненные зелёные и зачёркнутые. Карточки остаются компактными и видимыми целиком; прокручивается только вся страница планировщика. В узком окне используется читаемый список дат. Платёж отмечен знаком $, встреча — значком людей, статус — флажком. Маркер типа и восклицательный знак высокого приоритета могут отображаться вместе.',
+      'Description holds the brief; Result records the outcome. Both support multiline text. Optional sections open when needed, and up to 20 recent form drafts can be recovered. Date format and language are in settings; task time is optional.',
+      '«Описание» — вводные, «Результат» — итог. Оба поля многострочные. Дополнительные секции раскрываются по необходимости; сохраняется до 20 последних черновиков форм. Язык и формат дат меняются в настройках; время задачи необязательно.',
     ),
-    w.manual,
   ]);
   section(t('Statuses and Undo', 'Статусы и отмена действий'), [
     t(
-      'Backlog holds deferred work; To do is planned work; In progress is started work; Done and Failed are closed. The checkbox completes or reopens a task, the cross marks failure and the trash button deletes it. Undo reverses up to 50 changes in the current session; creation and import are excluded. Restarting clears Undo history. Undo preserves conflicting external edits.',
-      '«Отложено» — дела на потом, «К выполнению» — запланированные, «В работе» — начатые. «Выполнено» и «Не выполнено» — закрытые задачи. Галочка завершает или переоткрывает задачу, крестик отмечает невыполнение, корзина удаляет. Отмена доступна для последних 50 изменений в текущей сессии, кроме создания и импорта. После перезапуска история отмены очищается. При конфликте отмена сохраняет изменения, сделанные вне планнера.',
+      'Backlog, To do and In progress are open work; Done and Failed are closed. Click the check to complete or reopen. Undo retains 50 changes in the current session, except creation and import, and refuses conflicting external edits.',
+      '«Отложено», «К выполнению» и «В работе» — открытые задачи; «Выполнено» и «Не выполнено» — закрытые. Галочка завершает или переоткрывает задачу. Отмена хранит 50 изменений текущей сессии, кроме создания и импорта, и защищает внешние правки.',
     ),
   ]);
   section(t('Repeats and series end', 'Повторы и завершение серии'), [
     t(
-      'Daily, weekly, weekday, monthly, yearly and custom RRULE repeats are available. Date anchors the series; Repeat through is its inclusive last day, and an empty end leaves it open-ended. A weekday series anchored on a weekend starts on Monday. The form and save confirmation show its first repeat. A range with no matching dates cannot be saved.',
-      'Доступны повторы каждый день, неделю, по будням, месяц, год и собственное правило RRULE. Начальная дата задаёт отсчёт серии; «Повторять по» включает последний день, а пустое поле оставляет серию без конца. Если повтор по будням начинается в выходной, первый день будет в понедельник. Первый повтор виден в форме и подтверждении сохранения. Диапазон без подходящих дат сохранить нельзя.',
+      'Choose a repeat preset or configure intervals, weekdays and a count; preview dates before saving. Advanced RRULE is also available. Repeat through includes its last day. Status, result, spent time and moves belong to each occurrence separately.',
+      'Выберите готовый повтор или настройте интервал, дни недели и количество; проверьте ближайшие даты перед сохранением. Доступно и правило RRULE. «Повторять по» включает последний день. Статус, результат, затраченное время и переносы у каждого выполнения отдельные.',
     ),
-    w.seriesHint,
     t(
-      'Completion, spent minutes, skip and move apply to the selected occurrence. Tomorrow remains independent. Deletion can target one day or the whole series. Stopping removes future generation while retaining recorded history; resuming restores the series. Monthly repeats on the 31st skip months without that day. A rule exceeding calculation limits shows a warning; simplify it or shorten its range.',
-      'Завершение, минуты, пропуск и перенос относятся к выбранному повтору. Следующий день остаётся независимым. Можно удалить один повтор или всю серию. Остановка убирает будущие повторы, сохраняя историю; возобновление возвращает серию. Ежемесячные повторы на 31-е пропускают месяцы без этого дня. Если правило превышает предел расчёта, появится предупреждение: упростите правило или сократите диапазон.',
+      'Stopping a series preserves recorded history. Deletion offers one occurrence or the whole series.',
+      'Завершение серии сохраняет записанную историю. При удалении можно выбрать одно выполнение или всю серию.',
     ),
   ]);
   const legend = section(t('Colors and icons', 'Цвета и значки'), [
     t(
-      'Task colors describe workflow status. Shades are darker in the light theme, with the same meaning. Red overdue labels identify unfinished work past its deadline; they do not mark it Failed. Project deadline cards use the theme accent.',
-      'Цвет задачи обозначает статус работы. В светлой теме оттенки темнее, но значения те же. Красная подпись «Просрочено» отмечает незакрытую задачу с истёкшим сроком и не переводит её в «Не выполнено». Карточки сроков проектов используют акцент темы.',
-    ),
-    t(
-      'Continuation marks between start and deadline inherit the task color and strikethrough. They have no checkbox or separate workload; the empty checkbox gutter keeps their titles aligned. Normal priority has no marker. Filter dots show which calendar filters are enabled; they are not task status indicators.',
-      'Промежуточные отметки между стартом и дедлайном наследуют цвет и зачёркивание задачи. У них нет чекбокса и отдельной нагрузки; пустой отступ под чекбокс выравнивает названия. Обычный приоритет не имеет маркера. Точки на кнопках фильтров показывают, какие фильтры включены, и не обозначают статус задачи.',
+      'Status colors mark the task accents. Closed titles are muted and crossed out. An overdue label marks unfinished work past its deadline; it does not change its status.',
+      'Цвет статуса виден на акцентах задачи. Названия закрытых задач приглушены и зачёркнуты. «Просрочено» отмечает незавершённую задачу с истёкшим сроком, не меняя её статус.',
     ),
   ]);
   legend.classList.add('tp-manual-legend');
@@ -122,12 +125,12 @@ export function manual(
       'Жёлтый / янтарный — задача в работе, независимо от приоритета.',
     ),
     done: t(
-      'Green and strikethrough — completed work.',
-      'Зелёный и зачёркнутое название — выполненная задача.',
+      'Green accent — completed work; muted, crossed-out title.',
+      'Зелёный акцент — выполнено; название приглушено и зачёркнуто.',
     ),
     failed: t(
-      'Red / pink and strikethrough — failed work.',
-      'Красный / розовый и зачёркнутое название — задача не выполнена.',
+      'Red / pink accent — failed work; muted, crossed-out title.',
+      'Красный / розовый акцент — не выполнено; название приглушено и зачёркнуто.',
     ),
   };
   for (const status of STATUSES) {
@@ -166,6 +169,14 @@ export function manual(
     w.meeting,
     t('People icon — Meeting task type.', 'Значок людей — тип задачи «Встреча».'),
     'users-round',
+  );
+  addKey(
+    w.contact,
+    t(
+      'Message icon — write or call someone.',
+      'Значок сообщения — написать или позвонить человеку.',
+    ),
+    'message-circle',
   );
   addKey(
     w.payment,
@@ -270,68 +281,56 @@ export function manual(
     'trash-2',
   );
   section(t('Lists, calendar and boards', 'Списки, календарь и доски'), [
-    w.help,
-    w.boardHelp,
-    w.boardPeriodHint,
     t(
-      'Day, Week and Month show the chosen work days and the separate deadline. Subtle continuation marks link start and deadline without checkboxes, work sessions or additional workload; clicking one edits the original task. Date sets the primary work day. Additional dates already saved in the note’s workDates field remain visible and are preserved when editing the task. Deadline-only cards appear at the bottom of their day without a separate lane. Expanded names and project labels wrap in full; area/project context is included; no tasks are hidden behind count buttons. Dragging a work day moves only that session; dragging a deadline moves only the deadline. A task still has one status and one total of spent minutes. Extra work days cannot be combined with a recurrence rule.',
-      'Режимы «День», «Неделя» и «Месяц» показывают выбранные дни работы и отдельный дедлайн. Между стартом и дедлайном видны приглушённые отметки без чекбоксов и дополнительной нагрузки. Нажатие открывает исходную задачу. Поле «Дата» задаёт основной рабочий день. Дополнительные даты, уже сохранённые в поле workDates заметки, остаются видимыми и сохраняются при редактировании задачи. Карточка отдельного дедлайна находится внизу дня, без дополнительной полосы. После раскрытия название и проект видны полностью; сфера показана рядом с проектом; задач под кнопками с количеством нет. Перетаскивание рабочего дня переносит только его, а дедлайна — только срок. Статус и фактически затраченные минуты остаются общими для задачи. Дополнительные дни нельзя совмещать с правилом повторения.',
+      'Day, Week and Month show work dates and deadlines. Dragging a work card moves that session; dragging the final deadline card moves the deadline. Planning adds work days and splits the estimate between them. Boards change task status.',
+      '«День», «Неделя» и «Месяц» показывают рабочие даты и дедлайны. Перенос рабочей карточки меняет этот день, конечной карточки — дедлайн. «Планирование» добавляет рабочие дни и распределяет оценку времени. Доски помогают менять статус задач.',
     ),
     t(
-      'Hide completed, Hide failed and Hide recurring independently filter calendar cards. Day, Week and Month share these choices while the view stays open. Task status, planned load, time, expenses and subscription forecasts remain unchanged.',
-      '«Скрыть выполненные», «Скрыть проваленные» и «Скрыть повторяющиеся» независимо скрывают карточки календаря. Выбор сохраняется для дня, недели и месяца, пока открыт этот вид планировщика. Статусы, плановая нагрузка, время, расходы и прогноз подписок не меняются.',
+      'Full titles wrap without truncation. Wide calendars align multi-day tasks; narrow panes use an agenda. Continuation cards add no workload. Display controls details, task visibility and the optional three-entry Month overview; Show more opens the full day.',
+      'Названия переносятся полностью. В широком календаре многодневные задачи выровнены по строкам, в узком показана повестка. Промежуточные карточки не добавляют нагрузку. «Отображение» управляет подробностями, видимостью задач и лимитом в три записи на день месяца; «Показать ещё» открывает весь день.',
+    ),
+    t(
+      'In Month, a small underline marks the current week. Weekends use only a subtle text color; today has its own marker. Daily workload bars remain visible across all weeks. Click the period title to jump to a date.',
+      'В месяце текущая неделя отмечена короткой линией под датами. Выходные отличаются только оттенком текста, у сегодняшнего дня свой маркер. Полоски нагрузки видны во всех неделях. Нажмите название периода для перехода к дате.',
     ),
   ]);
   section(t('Planned workload', 'Плановая нагрузка'), [
     t(
-      'Estimated time estimates the whole task and stays separate from manually recorded spent minutes. Open cards show Estimate: 3 h or Estimate: 1 h 30 min. Completed work shows Plan and, when positive spent minutes are recorded, Spent, in lists, the calendar and boards. Missing estimates and unrecorded spent time are omitted. Recurring work uses its selected occurrence’s spent minutes. The estimate is divided equally across its selected work days; rounding preserves the exact total. With no work days, the estimate belongs to the deadline. A recurring occurrence receives its own full estimate. Completed and failed work, payments and subscriptions are excluded from planned load. Unknown estimates are counted separately. Daily capacity defaults to 480 minutes and can be changed in Settings; zero means no available time. Day and Today show planned time and available daily time with separate labels. Week and Month show estimated time, tasks without estimates and overloaded days. Repeated sessions of the same one-off task count once in the unknown-estimate total; recurring occurrences count separately. An empty estimate is shown as unknown, with no empty progress bar. Moving or reopening work recomputes the load without altering spent minutes.',
-      'Оценка времени относится ко всей задаче и отделена от фактически затраченного времени. У открытых задач она показана кратко: «Оценка: 3 ч» или «Оценка: 1 ч 30 мин». У выполненных задач в списках, календаре и на досках показан «План» и, если введено положительное затраченное время, «Потрачено». Если оценка или затраченное время не указаны, соответствующая подпись не показывается. Для повторов берутся минуты выбранного выполнения. Оценка распределяется поровну между выбранными днями работы с сохранением точной суммы. Если рабочих дней нет, оценка относится к дедлайну. Для каждого повтора используется полная оценка. Выполненные и не выполненные дела, платежи и подписки в нагрузку не входят; задачи без оценки учитываются отдельно. В настройках доступно время на день: по умолчанию 480 минут, ноль означает отсутствие свободного времени. «День» и «Сегодня» показывают план и доступное время с отдельными подписями. В неделе и месяце видны оценённое время, задачи без оценки и дни с перегрузкой. Одна задача с несколькими рабочими днями считается один раз в общем числе задач без оценки; повторы считаются отдельно. Пустая оценка отображается как неизвестная, без пустого прогресс-бара. Перенос и переоткрытие обновляют нагрузку, сохраняя фактически затраченные минуты.',
+      'The estimate is planned time; Spent is recorded manually. A one-off estimate is divided between work days, while each repeat gets its full estimate. Closed work, payments and subscriptions do not add planned load. Missing estimates are counted separately.',
+      'Оценка — план времени; затраченное время вводится вручную. Оценка обычной задачи делится между рабочими днями, у каждого повтора она полная. Закрытые задачи, платежи и подписки не увеличивают плановую нагрузку. Задачи без оценки учитываются отдельно.',
+    ),
+    t(
+      'Daily capacity defaults to 480 minutes and is configurable. Open the time indicator for details; red indicates overload. Reopening preserves the recorded result and spent time.',
+      'Доступное время по умолчанию — 480 минут в день; его можно изменить в настройках. Нажмите показатель времени для подробностей; красный означает перегрузку. Переоткрытие сохраняет результат и записанное время.',
     ),
   ]);
   section(t('Statistics', 'Статистика'), [
     t(
-      'The period selector uses the current calendar week, month, quarter or year and is shared by work statistics, financial statistics and Payments. The full date range stays beneath the period buttons; today’s date sits beside the header actions. Dates in expense and budget panels belong to their headings. Work results and time are reported for that period; Overall statistics and project progress are explicitly marked All time. Spending shows every currency at once in separate line charts with the same dates and independent monetary scales. Zero days are retained; exact daily values for all currencies are available together.',
-      'Выбор периода означает текущие календарные неделю, месяц, квартал или год и общий для деловой статистики, финансовой статистики и платежей. Полный диапазон дат расположен под кнопками периода, а сегодняшняя дата — рядом с действиями в шапке. В расходах и бюджетах даты входят в заголовки соответствующих блоков. Результаты дел и затраченное время относятся к выбранному периоду; общая статистика и прогресс проектов отмечены как «За всё время». Расходы во всех валютах показаны одновременно: у каждой валюты свой график с одинаковыми датами и отдельной денежной шкалой. Дни без оплат сохранены; точные суммы по всем валютам доступны вместе в данных по дням.',
-    ),
-    w.statsHelp,
-    w.statsTimeHelp,
-    w.periodRangeHelp,
-    t(
-      'Completion and failed-task counts use separate lines on one scale. Closed minutes have their own line chart. Every date in the selected period is retained, including zero-value days. Quarters group days by week; years group by month. Sparse horizontal date labels keep the charts readable; exact daily numbers remain in the expandable table.',
-      'Количество выполненных и не выполненных дел показано отдельными линиями на одной шкале. Минуты закрытых дел — отдельной линейной диаграммой. Сохраняются все даты выбранного периода, включая нулевые дни. В квартале дни объединяются по неделям, в году — по месяцам. Подписи дат расположены горизонтально с промежутками; точные дневные значения доступны в раскрывающейся таблице.',
+      'Week, Month, Quarter and Year cover the current calendar period. Overall statistics cover all time; exact values are in collapsed details. Closing old work credits its planned reporting date. Payments and subscriptions are excluded from work metrics.',
+      '«Неделя», «Месяц», «Квартал» и «Год» — текущие календарные периоды. Общая статистика охватывает всё время; точные значения доступны в раскрывающихся подробностях. Закрытие старой задачи учитывается по её плановой отчётной дате. Платежи и подписки не входят в показатели дел.',
     ),
     t(
-      'Work statistics exclude payments and subscriptions. Expenses is for entering, editing and undoing payments, planning and subscription management. Financial statistics show totals, daily spending and project allocation without duplicating transaction lists. Actual spending uses the payment date. All currency charts remain visible; the currency selector applies only to the project breakdown. Currencies are never added together or converted.',
-      'В разделе «Дела» платежи и подписки исключены. «Расходы» — внесение и изменение оплат, план и управление подписками. «Финансы» — итоги, динамика и распределение по проектам без повторения списков оплат. Фактические траты учитываются по дате оплаты. Графики всех валют видны одновременно; выбор валюты относится только к распределению по проектам. Разные валюты не складываются и не конвертируются.',
+      'Financial reports use actual payment dates. Each currency stays separate; currencies are never converted or summed.',
+      'Финансовые отчёты используют фактические даты оплаты. Каждая валюта показана отдельно, без конвертации и сложения разных валют.',
     ),
   ]);
   section(t('Budgets', 'Бюджеты'), [
     t(
-      'Set an optional monthly budget and currency when editing an area or project, or choose a scope in Statistics → Finances → Budgets. An empty limit disables the budget; zero remains a valid limit. The selected current calendar month uses that limit, a quarter uses three monthly limits, and a year uses twelve. A week is prorated by the actual number of days in each month. Spent uses actual payment dates; Planned includes outstanding payment tasks and unrecorded subscription charges in that period. Remaining is the limit minus spent; After planned payments also subtracts the forecast. Area budgets include all linked projects. Area and project limits are independent and are never summed into a shared total. Other currencies and missing prices are flagged; no currency conversion occurs. The operational payment lists remain in Expenses.',
-      'Месячный бюджет и валюту можно задать в форме сферы или проекта либо выбрать объект в «Статистика → Финансы → Бюджеты». Пустая сумма отключает бюджет; ноль — допустимый лимит. Текущий месяц использует этот лимит, квартал — три месячных лимита, год — двенадцать. Лимит недели рассчитывается пропорционально числу дней в соответствующих месяцах. Факт относится к дате оплаты; план включает открытые платежи и ещё не записанные списания подписок за выбранный период. Остаток — лимит минус факт; «После запланированных оплат» также вычитает план. В бюджет сферы входят все связанные проекты. Лимиты сферы и проекта независимы и не складываются в общий итог. Другие валюты и неизвестные суммы отмечены отдельно, конвертации нет. Списки оплат остаются в «Расходах».',
+      'Set a monthly limit and currency in an area or project, or in financial statistics. Empty disables the limit; zero is valid. Remaining subtracts spending; After planned payments also subtracts the forecast. Area and project budgets stay independent.',
+      'Задайте месячный лимит и валюту в сфере, проекте или финансовой статистике. Пустой лимит отключён; ноль допустим. Остаток учитывает расходы, «После запланированных оплат» — ещё и прогноз. Бюджеты сфер и проектов независимы.',
     ),
   ]);
   section(w.subscriptions, [
     t(
-      'Expenses has two sections: Payments for upcoming payments and paid expenses, and Subscriptions for recurring cost settings. Payments to review groups overdue, undated and unsuccessful payments. The subscription catalog and monthly cost estimate do not depend on the report period. Add expense and Add subscription open their respective sections.',
-      'В «Расходах» два раздела: «Платежи» — предстоящие платежи и оплаченные расходы; «Подписки» — настройки регулярных списаний. В блоке «Требуют внимания» собраны просроченные платежи, записи без даты и неоплаченные задачи. Список подписок и их стоимость в месяц не зависят от периода отчёта. «Добавить расход» и «Добавить подписку» открывают соответствующий раздел.',
-    ),
-    w.expensesHelp,
-    w.paymentHelp,
-    w.chargeHelp,
-    w.subscriptionHelp,
-    w.subscriptionCatalogHelp,
-    t(
-      'Active subscriptions appear in a separate payment section at the bottom of each calendar day. First payment anchors a monthly or yearly forecast; missing month days use the last day without changing the anchor. Future dates show the full billing amount, not the monthly average. Cancelled or undated subscriptions have no calendar forecast. Subscriptions remain excluded from work lists, boards, task progress and time statistics. The cards show the next payment date; cancellation and resumption support Undo.',
-      'Активные подписки показаны отдельно внизу каждого дня календаря. Дата первого платежа задаёт ежемесячный или ежегодный прогноз. Если нужного числа нет, используется последний день месяца без изменения исходной даты. Будущие списания показывают полную сумму платежа, а не среднее за месяц. У отменённых подписок и подписок без даты прогноза нет. Они не входят в списки задач, доски, прогресс и учёт времени. На карточке видна дата следующего платежа; отмену и возобновление подписки можно отменить.',
+      'Expenses contains Payments and Subscriptions. Record a payment to update paid history. Subscription settings define recurring forecasts; cancelled or undated subscriptions have no calendar forecast. Annual charges show the full payment, while monthly cost uses the yearly amount divided by twelve.',
+      'В «Расходах» есть «Платежи» и «Подписки». Запишите оплату для добавления в историю. Настройки подписки задают прогноз списаний; отменённые подписки и записи без даты в прогноз не входят. Годовое списание показано полностью, стоимость в месяц — как годовая сумма, делённая на двенадцать.',
     ),
   ]);
   section(t('Data and legacy import', 'Данные и импорт'), [
     t(
-      'Data lives in Obsidian Markdown notes. New areas, projects and tasks default to Planner/Areas, Planner/Projects and Planner/Tasks; settings choose the folder and language. Dataview and TaskNotes are unnecessary. The plugin works locally without an account or telemetry. Collaboration depends on your vault and synchronization.',
-      'Данные хранятся в обычных Markdown-заметках Obsidian. По умолчанию новые сферы, проекты и задачи создаются в Planner/Areas, Planner/Projects и Planner/Tasks. Папка и язык меняются в настройках. Dataview и TaskNotes не нужны. Плагин работает локально, без аккаунта и телеметрии. Совместная работа зависит от синхронизации вашего хранилища.',
+      'Notes stay in your vault; new notes default to Planner. Settings choose the folder and language. The plugin works offline without accounts or telemetry. Legacy import copies supported notes without changing originals; vault sync is managed by Obsidian.',
+      'Заметки остаются в хранилище; новые по умолчанию создаются в Planner. Папка и язык меняются в настройках. Плагин работает офлайн, без аккаунта и телеметрии. Импорт копирует поддерживаемые старые заметки, сохраняя оригиналы; синхронизацией хранилища управляет Obsidian.',
     ),
-    w.importText,
   ]);
   section(t('About', 'О плагине'), [
     `${t('Author', 'Автор')}: ${author}.`,

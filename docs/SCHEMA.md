@@ -41,12 +41,13 @@ scheduled: '2026-10-02'
 due: null
 recurrence: FREQ=DAILY
 priority: normal # low | normal | high
-taskType: task # task | meeting | payment | status; subscription is a separate expense record
+taskType: task # task | meeting | contact | payment | status; subscription is a separate expense record
 actualMinutes: 0 # one-off total; historic unallocated time on imported series
 topOccurrences:
   '2026-10-02':
     status: done
     minutes: 10
+    result: 'Reviewed and released' # optional result for this occurrence only
     resolvedOn: '2026-10-02' # local calendar date, used by Today history
     resolvedAt: '2026-10-02T14:00:00.000Z' # audit timestamp
   '2026-10-03':
@@ -82,7 +83,7 @@ Unknown metadata and note bodies are copied, not stripped. Original files remain
 
 This is a date-based planner. Custom rules must have unique fields and use DAILY/WEEKLY/MONTHLY/YEARLY. Sub-day frequencies and non-zero BYHOUR/BYMINUTE/BYSECOND are rejected. Rule length is at most 1024 characters; COUNT/INTERVAL must be integers from 1 to 100000; recurrence anchors start in 1900 or later. Unknown/unsupported legacy rules are retained with a visible warning. Disabling recurrence preserves the selected occurrence status/minutes; inactive per-day metadata stays in the note for historical recovery. Each details save is one frontmatter operation and one Undo step.
 
-Workflow and descriptions use schema version 1. Unknown fields and note bodies remain preserved. Descriptions are strings, edited as multiline Markdown text; service writes are capped at 100,000 characters. Date display preferences live in plugin settings, while all note dates remain ISO. Active occurrence statuses retain their recorded minutes and clear resolution dates when reopened. Creating a recurring task in Done/Failed affects its first matching occurrence only; future occurrences remain available.
+Workflow, descriptions and results use schema version 1. Unknown fields and note bodies remain preserved. Descriptions are strings, edited as multiline Markdown text; service writes are capped at 100,000 characters. The optional `result` string stores a one-off task's outcome independently of `description`; recurring results use `topOccurrences[originalDate].result`, with the same 100,000-character write limit. Omitted results preserve existing values; an explicit empty string clears a result. Reopening preserves the result. Creating a series with a result assigns it only to the first matching occurrence. No migration is needed for existing notes. Date display preferences live in plugin settings, while all note dates remain ISO. Active occurrence statuses retain their recorded minutes and clear resolution dates when reopened. Creating a recurring task in Done/Failed affects its first matching occurrence only; future occurrences remain available.
 
 ## Subscription tracker
 
@@ -145,3 +146,6 @@ Projects and areas may have `monthlyBudget: 250` and `budgetCurrency: USD`. Empt
 `dailyCapacityMinutes` is a plugin setting, with a default of 480 and accepted range 0..1440; zero means no available time. Calendar view/focus selection stays within the open view's state and changes no note dates.
 
 Priority is stored as `low`, `normal` or `high`; missing/unrecognized values remain `normal`. High uses a red ! marker, low a white downward arrow. Within the existing date/time/status order, priority sorts high → normal → low. Calendar visibility controls are view-only and never rewrite statuses or recurrence history.
+
+
+The usability preview adds `taskType: contact` for a message or phone call. It shares ordinary work-task semantics and does not change `topSchema: 1`. UI preferences and bounded form drafts live in plugin settings, separately from planner Markdown notes.

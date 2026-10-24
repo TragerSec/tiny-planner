@@ -106,17 +106,30 @@ export function todayItems(
     items.splice(low, 0, item);
     if (items.length > limit) items.pop();
   };
+  const closedToday = (item: Occurrence): boolean => {
+    const resolved = item.recurring
+      ? dateKey(
+          item.task.occurrences[item.key]?.resolvedOn ||
+            item.task.occurrences[item.key]?.resolvedAt,
+        )
+      : item.task.resolvedOn;
+    // Failing old work closes it; it must not become today's work again.
+    return (
+      (resolved || item.date) === today &&
+      (item.status !== 'failed' || !item.date || item.date >= today)
+    );
+  };
   for (const task of tasks) {
     if (task.kind === 'subscription') continue;
     if (!task.recurrence) {
       const work = new Set([task.scheduled, ...(task.workDates || [])].filter(Boolean));
       const item = taskItem(task, today);
+      if (!isActive(item.status)) {
+        if (closedToday(item)) add('today', item);
+        continue;
+      }
       if (isOverdue(item, today)) add('overdue', item);
-      else if (
-        work.has(today) ||
-        task.due === today ||
-        (!isActive(task.status) && task.resolvedOn === today)
-      )
+      else if (work.has(today) || task.due === today)
         add('today', work.has(today) ? { ...item, date: today } : item);
       continue;
     }
@@ -156,20 +169,11 @@ export function todayItems(
         });
       }
     }
-    if (!task.recurrence && !entries.length && !isActive(task.status) && task.resolvedOn === today)
-      entries.push(taskItem(task, today));
     for (const item of entries) {
-      if (isOverdue(item, today)) add('overdue', item);
-      else if (
-        (item.date <= today && item.end >= today) ||
-        (!isActive(item.status) &&
-          (item.recurring
-            ? dateKey(
-                task.occurrences[item.key]?.resolvedOn || task.occurrences[item.key]?.resolvedAt,
-              )
-            : task.resolvedOn) === today)
-      )
-        add('today', item);
+      if (!isActive(item.status)) {
+        if (closedToday(item)) add('today', item);
+      } else if (isOverdue(item, today)) add('overdue', item);
+      else if (item.date <= today && item.end >= today) add('today', item);
     }
   }
   return {

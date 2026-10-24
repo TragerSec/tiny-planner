@@ -168,7 +168,7 @@ test('Kanban closed tasks without resolution dates do not span through a future 
   }
 });
 
-test('Kanban closed tasks use actual resolution dates before any planned dates', () => {
+test('Kanban Today retains completion history without reviving failed overdue work', () => {
   const today = '2026-10-03';
   for (const status of ['done', 'failed']) {
     const resolved = status === 'done' ? 'completedDate' : 'failedDate';
@@ -186,7 +186,7 @@ test('Kanban closed tasks use actual resolution dates before any planned dates',
     });
     assert.deepEqual(
       boardItems([old, current], today, 'today').map((i) => i.task.path),
-      [current.path],
+      status === 'failed' ? [] : [current.path],
     );
     assert.equal(boardItems([old, current], today, 'all').length, 2);
   }

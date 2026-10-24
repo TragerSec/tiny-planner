@@ -1,5 +1,69 @@
 # Changelog
 
+## 1.0.6
+
+- Shorten the README and built-in bilingual Guide; update instructions to match the final calendar appearance.
+
+- Remove weekend column/header fills; distinguish Saturday/Sunday labels and date numbers only with a restrained theme-derived text tone. Preserve today, current-week underlines and all load bars.
+
+- Complete the code and visual review documented in `docs/QUALITY_REVIEW.md`.
+- Unify continuation and work-card title metrics and inline markers, including equal heights by actual wrapped line count; restore transparent Day surfaces.
+- Keep mobile form actions after the fields so they cannot obscure task results; retain a restrained semantic color on destructive actions.
+- Remove 247 superseded CSS declarations; share legacy and modern settings definitions instead of duplicating handlers.
+- Cache task search text per repository snapshot, reuse calendar load calculations and limit textarea measurement to edited/visible fields.
+- Release repository read guards on completion while preserving stale-read protection; read legacy imports in bounded batches before creating copies; announce active select options and update menus when options become hidden.
+- Add a 176-scene design audit and a reproducible search benchmark without adding runtime dependencies.
+
+- Fix compact calendar cards shrinking horizontally to their title inside column flex containers. Set an explicit full container width while retaining content-sized heights; verify width as well as visible-line height for plain and lane cards.
+- Restore visible daily workload bars on every calendar week, including adjacent-month dates. Share the existing planned-load/capacity calculation with the details popup; keep overload red and use only a small date underline for the current week.
+- Apply muted closed-task text to continuation cards, including hover and keyboard-linked highlights; quiet closed-task priority markers.
+- Simplify reading surfaces: unboxed projects and statistics, quieter navigation, neutral task titles, compact context lines and hover/focus actions on desktop. Preserve status accents, touch actions, full titles and current-week highlighting.
+- Add a separate multiline Result beside Description, including draft recovery, conflict protection, Undo and independent results for recurring occurrences.
+- Keep calendar markers on the first title line and use uniform line metrics for content-sized cards; subtly highlight the current Monday–Sunday week in Month.
+- Normalize project/area action icons, button spacing, input and choice surfaces across pages, forms and settings; retain touch-sized controls on phones.
+- Add browser checks for equal card heights by visible line count and control geometry across all nine pages, both themes and three widths.
+- Add the Contact task type (Связаться), with a message icon and ru/en labels.
+- Reduce form clutter using disclosures for planning, repeats, time tracking, descriptions and budgets; expand filled sections automatically.
+- Restore navigation, calendar display and filters, while opening dates relative to today.
+- Add removable active-filter labels and contextual empty states.
+- Edit additional work dates and preview exact per-day estimate allocation.
+- Add visual repeat intervals, weekly days, counts and five-date previews without replacing the guarded engine or advanced RRULE mode.
+- Keep up to 20 recent form drafts and show inline save errors; protect task forms from overwriting external edits.
+- Add commands to open Today, Calendar and Inbox.
+- Lighten neutral borders and typography, and compute visible daily loads in one pass per series.
+- Add portable, deterministic source ZIP packaging with automatically included new modules.
+
+
+- Keep calendar type/priority/deadline markers beside titles without a separate footer; keep continuation surfaces transparent.
+- Align the first title line with its checkbox consistently on marked and plain cards; remove the forced two-line minimum height.
+- Quiet empty dates and grid lines; emphasize today with a bolder date and accent top border.
+- Reduce day headings to date and planned time, with accessible hover/tap load details that close on Escape, outside interaction, scrolling or resize.
+
+- Give a same-day task start/deadline card matching straight status rails on both sides; keep multi-day closing cards right-only.
+
+- Make list Filters explicit and keep their active indicator synchronized; distinguish quick-capture project assignment. Exercise actual filter controls across sections and pane widths.
+- Add confirmed project/area trash actions in the hierarchy and edit forms, preserving linked notes and supporting Undo.
+- Keep failed overdue tasks/occurrences out of Today and the Today board while retaining calendar history and late completion history.
+
+- Show complete wrapping task and continuation titles even with task details off; remove fixed title/card heights and line limits while retaining minimum touch sizes and aligned weekly lanes.
+
+- Keep the monthly entry-limit checkbox usable in Day and Week, so its active state can always be cleared; add regression coverage across details and period combinations.
+- Remove the spacing option and its unused state/styles/translations.
+
+- Reduce primary calendar controls to period selection and one display icon; replace secondary button pairs with five labelled native checkboxes.
+- Move the final task card’s status stripe to the right while preserving title alignment and overdue color.
+
+- Quiet continuation typography, lighter day lines and clearer week boundaries; use straight, square status rails without protruding chain end caps.
+- Group secondary options under Display, keep fixed compact spacing, and shorten empty phone days while preserving a 44 px date action.
+
+- Align multi-day work and deadlines on packed weekly rows in wide calendars, retaining the narrow agenda and a fallback for older browsers.
+- Add linked-card highlighting, daily capacity meters, deadline icons, date navigation from the period title and drag destination previews.
+
+- Refine calendar alignment, neutral card surfaces, today/weekend landmarks and grouped controls.
+- Replace intermediate cards with compact status-aware continuation strips; keep time, priority and original-task editing.
+- Add optional Month overview: three entries per day and an accessible link to the complete day; all entries remain visible by default.
+- Keep narrow panes as readable agendas, with whole-page scrolling and touch targets.
+
 ## 1.0.5
 
 - Fix Obsidian review findings: textarea sizing uses setCssStyles, selection controls use createDiv/createSpan, and the redundant ToggleEvent assertion is removed.

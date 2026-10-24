@@ -8,10 +8,11 @@ export function frontmatter(text: string): FM {
   return data && typeof data === 'object' && !Array.isArray(data) ? (data as FM) : {};
 }
 export class Repository {
+  loaded = false;
   private tasks = new Map<string, Task>();
   private projects = new Map<string, Project>();
   private areas = new Map<string, Area>();
-  private revisions = new Map<string, number>();
+  private revisions = new Map<string, symbol>();
   private listeners = new Set<() => void>();
   private cached?: Snapshot;
   private projectIndex = new Map<string, Project>();
@@ -96,6 +97,7 @@ export class Repository {
             String(result.reason instanceof Error ? result.reason.message : result.reason),
           );
     }
+    this.loaded = true;
     this.emit();
     if (errors.length) throw new Error(errors.join('\n'));
   }
@@ -113,7 +115,7 @@ export class Repository {
       : [path];
     for (const key of paths) {
       if (key !== path && !key.startsWith(path + '/')) continue;
-      this.revisions.set(key, (this.revisions.get(key) || 0) + 1);
+      this.revisions.delete(key);
       this.tasks.delete(key);
       this.projects.delete(key);
       this.areas.delete(key);
@@ -122,37 +124,42 @@ export class Repository {
   }
   async refresh(file: TFile, emit = true): Promise<void> {
     const path = file.path;
-    const rev = (this.revisions.get(path) || 0) + 1;
+    // A unique in-flight token prevents stale reads without retaining path tombstones.
+    const rev = Symbol();
     this.revisions.set(path, rev);
-    const text = await this.app.vault.read(file);
-    const header = text.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)?.[1] || '';
-    const had = this.tasks.has(path) || this.projects.has(path) || this.areas.has(path);
-    if (!header.includes('topSchema') && !had) return;
-    let fm: FM;
     try {
-      fm = frontmatter(text);
-    } catch (error) {
-      if (this.revisions.get(path) !== rev) return;
-      this.remove(path, emit);
-      throw new Error(
-        `Invalid planner metadata: ${path}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
+      const text = await this.app.vault.read(file);
+      const header = text.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)?.[1] || '';
+      const had = this.tasks.has(path) || this.projects.has(path) || this.areas.has(path);
+      if (!header.includes('topSchema') && !had) return;
+      let fm: FM;
+      try {
+        fm = frontmatter(text);
+      } catch (error) {
+        if (this.revisions.get(path) !== rev) return;
+        this.remove(path, emit);
+        throw new Error(
+          `Invalid planner metadata: ${path}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
 
-    if (this.revisions.get(path) !== rev) return;
-    this.cached = undefined;
-    this.tasks.delete(path);
-    this.projects.delete(path);
-    this.areas.delete(path);
-    if (fm.topSchema !== undefined && Number(fm.topSchema) > 1) {
+      if (this.revisions.get(path) !== rev) return;
+      this.cached = undefined;
+      this.tasks.delete(path);
+      this.projects.delete(path);
+      this.areas.delete(path);
+      if (fm.topSchema !== undefined && Number(fm.topSchema) > 1) {
+        if (emit) this.emit();
+        throw new Error(`Unsupported future planner schema: ${path}`);
+      }
+      if (Number(fm.topSchema) === 1) {
+        if (fm.type === 'task') this.tasks.set(path, normalizeTask(path, fm));
+        if (fm.type === 'project') this.projects.set(path, normalizeProject(path, fm));
+        if (fm.type === 'area') this.areas.set(path, normalizeArea(path, fm));
+      }
       if (emit) this.emit();
-      throw new Error(`Unsupported future planner schema: ${path}`);
+    } finally {
+      if (this.revisions.get(path) === rev) this.revisions.delete(path);
     }
-    if (Number(fm.topSchema) === 1) {
-      if (fm.type === 'task') this.tasks.set(path, normalizeTask(path, fm));
-      if (fm.type === 'project') this.projects.set(path, normalizeProject(path, fm));
-      if (fm.type === 'area') this.areas.set(path, normalizeArea(path, fm));
-    }
-    if (emit) this.emit();
   }
 }

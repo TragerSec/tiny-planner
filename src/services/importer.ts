@@ -31,20 +31,31 @@ export class LegacyImporter {
     const result: ImportResult = { tasks: 0, projects: 0, areas: 0, warnings: [], skipped: 0 };
     const data: { file: TFile; fm: FM; text: string }[] = [];
     const imported = new Map<string, string>();
-    for (const file of this.app.vault.getMarkdownFiles()) {
-      const text = await this.app.vault.cachedRead(file);
-      const header = text.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)?.[1] || '';
-      if (!/^(Tasks|Projects)\//i.test(file.path) && !header.includes('topLegacySource')) continue;
-      const fm = frontmatter(text);
-      if (scalarText(fm.topLegacySource)) imported.set(scalarText(fm.topLegacySource), file.path);
-      if (fm.topSchema || !/^(Tasks|Projects)\//i.test(file.path)) continue;
-      const isProject = fm.type === 'project' || file.basename === '_project';
-      const isTask =
-        !isProject &&
-        (fm.type === 'task' ||
-          strings(fm.tags).some((t) => t.replace(/^#/, '') === 'task') ||
-          fm.status !== undefined);
-      if (isProject || isTask) data.push({ file, fm, text });
+    const files = this.app.vault.getMarkdownFiles();
+    // Keep memory and concurrent I/O bounded while preserving the original vault order.
+    // Complete every read before creating notes, so a read failure cannot start a partial import.
+    for (let offset = 0; offset < files.length; offset += 24) {
+      const batch = await Promise.all(
+        files.slice(offset, offset + 24).map(async (file) => ({
+          file,
+          text: await this.app.vault.cachedRead(file),
+        })),
+      );
+      for (const { file, text } of batch) {
+        const header = text.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)?.[1] || '';
+        if (!/^(Tasks|Projects)\//i.test(file.path) && !header.includes('topLegacySource'))
+          continue;
+        const fm = frontmatter(text);
+        if (scalarText(fm.topLegacySource)) imported.set(scalarText(fm.topLegacySource), file.path);
+        if (fm.topSchema || !/^(Tasks|Projects)\//i.test(file.path)) continue;
+        const isProject = fm.type === 'project' || file.basename === '_project';
+        const isTask =
+          !isProject &&
+          (fm.type === 'task' ||
+            strings(fm.tags).some((t) => t.replace(/^#/, '') === 'task') ||
+            fm.status !== undefined);
+        if (isProject || isTask) data.push({ file, fm, text });
+      }
     }
     const areas = new Map(this.repo.snapshot().areas.map((a) => [a.title, a.path]));
     for (const entry of data.filter(

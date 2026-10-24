@@ -4,7 +4,13 @@ import TinyPlanner from '../src/main';
 import { readFileSync } from 'node:fs';
 import { words, messageText } from '../src/ui/i18n';
 import { PlannerView } from '../src/ui/view';
-import { TaskModal, EntityModal, ImportModal, SubscriptionModal } from '../src/ui/modals';
+import {
+  TaskModal,
+  EntityModal,
+  ImportModal,
+  SubscriptionModal,
+  CalendarJumpModal,
+} from '../src/ui/modals';
 import {
   addDays,
   day,
@@ -58,6 +64,12 @@ function byText(root: HTMLElement, text: string): HTMLButtonElement {
 function click(el: Element | null) {
   assert.ok(el);
   (el as HTMLElement).click();
+}
+function setCalendarCheck(root: HTMLElement, selector: string, checked: boolean) {
+  const control = root.querySelector<HTMLInputElement>(selector)!;
+  assert.ok(control);
+  control.checked = checked;
+  control.dispatchEvent(new window.Event('change', { bubbles: true }));
 }
 function change(el: HTMLInputElement | HTMLSelectElement, value: string) {
   el.value = value;
@@ -1187,15 +1199,15 @@ test('translations cover matching dictionaries, Boards, commands and actionable 
   );
   const f = await fixture();
   try {
-    assert.equal((f.plugin as any).commands.length, 5);
+    assert.equal((f.plugin as any).commands.length, 8);
     assert.ok((f.plugin as any).commands.some((c: any) => c.name === 'Открыть планировщик'));
     f.plugin.settings.language = 'en';
     f.plugin.registerCommands();
-    assert.equal((f.plugin as any).commands.length, 5);
+    assert.equal((f.plugin as any).commands.length, 8);
     assert.ok((f.plugin as any).commands.some((c: any) => c.name === 'Open planner'));
     f.plugin.settings.language = 'ru';
     f.plugin.registerCommands();
-    assert.equal((f.plugin as any).commands.length, 5);
+    assert.equal((f.plugin as any).commands.length, 8);
     assert.equal(f.root.querySelector('[data-tab=kanban]')?.textContent?.includes('Доски'), true);
   } finally {
     await f.close();
@@ -1379,15 +1391,15 @@ test('priority sits with titles and guide contains chapters, contents and divide
     click(f.root.querySelector('[data-tab=kanban]'));
     assert.ok(f.root.querySelector('.tp-board-card .tp-task-heading .tp-priority'));
     click(f.root.querySelector('[data-tab=manualTab]'));
-    assert.equal(f.root.querySelectorAll('.tp-manual section').length, 12);
-    assert.equal(f.root.querySelectorAll('.tp-manual-divider').length, 11);
-    assert.equal(f.root.querySelectorAll('ol.tp-manual-links a.tp-manual-link').length, 12);
+    assert.equal(f.root.querySelectorAll('.tp-manual section').length, 13);
+    assert.equal(f.root.querySelectorAll('.tp-manual-divider').length, 12);
+    assert.equal(f.root.querySelectorAll('ol.tp-manual-links a.tp-manual-link').length, 13);
     const contents = f.root.querySelector('.tp-manual-contents')!;
     assert.equal(contents.getAttribute('aria-label'), null);
     for (const link of f.root.querySelectorAll<HTMLAnchorElement>('.tp-manual-link')) {
       assert.ok(f.root.querySelector(link.getAttribute('href')!));
     }
-    assert.equal(f.root.querySelectorAll('.tp-manual-heading .tp-manual-number').length, 12);
+    assert.equal(f.root.querySelectorAll('.tp-manual-heading .tp-manual-number').length, 13);
   } finally {
     await f.close();
   }
@@ -1420,7 +1432,10 @@ test('calendar puts completed work first, orders times within states and keeps p
       [...cell.querySelectorAll('.tp-task-title')].map((n) => n.textContent),
       ['Done late', 'Done untimed', 'Failed', 'Open early', 'Open late'],
     );
-    assert.equal(cell.lastElementChild?.className, 'tp-calendar-billing');
+    assert.equal(
+      cell.querySelector('.tp-calendar-billing')?.parentElement?.lastElementChild?.className,
+      'tp-calendar-billing',
+    );
     assert.match(cell.querySelector('.tp-calendar-payment')!.textContent!, /YouTube Premium.*14/);
     assert.equal(f.root.querySelectorAll('.tp-task[data-path*="YouTube"]').length, 0);
     assert.equal(
@@ -1807,8 +1822,8 @@ test('UI hide completed belongs only to the calendar and retains failed tasks an
     );
     assert.ok(f.root.querySelector('.tp-calendar-grid')!.textContent!.includes('Failed example'));
     assert.equal(
-      f.root.querySelector('[data-calendar-hide-done]')!.getAttribute('aria-pressed'),
-      'true',
+      f.root.querySelector<HTMLInputElement>('[data-calendar-hide-done]')!.checked,
+      false,
     );
     assert.equal(JSON.stringify(f.plugin.repo.snapshot().tasks), notes);
     click(f.root.querySelector('[data-tab=today]'));
@@ -1855,15 +1870,15 @@ test('UI calendar hides recurring cards independently and retains load, billing,
       const load = f.root.querySelector('.tp-workload-panel')!.textContent;
       const toggle = () => f.root.querySelector('[data-calendar-hide-recurring]')!;
       assert.equal(
-        toggle().textContent,
-        language === 'ru' ? 'Скрыть повторяющиеся' : 'Hide recurring',
+        toggle().parentElement?.textContent,
+        language === 'ru' ? 'Повторяющиеся' : 'Recurring',
       );
       click(toggle());
-      assert.equal(toggle().getAttribute('aria-pressed'), 'true');
+      assert.equal((toggle() as HTMLInputElement).checked, false);
       assert.equal(toggle(), document.activeElement);
       assert.equal(
-        toggle().textContent,
-        language === 'ru' ? 'Показать повторяющиеся' : 'Show recurring',
+        toggle().parentElement?.textContent,
+        language === 'ru' ? 'Повторяющиеся' : 'Recurring',
       );
       assert.equal(f.root.querySelector('.tp-workload-panel')!.textContent, load);
       for (const mode of ['day', 'week', 'month']) {
@@ -1885,7 +1900,7 @@ test('UI calendar hides recurring cards independently and retains load, billing,
       assert.ok(f.root.textContent!.includes('Repeat work'));
       click(f.root.querySelector('[data-tab=calendar]'));
       f.view.rebuild();
-      assert.equal(toggle().getAttribute('aria-pressed'), 'true');
+      assert.equal((toggle() as HTMLInputElement).checked, false);
       click(toggle());
       assert.ok(f.root.querySelector('.tp-calendar-grid')!.textContent!.includes('Repeat work'));
       assert.equal(
@@ -2144,14 +2159,15 @@ test('UI explanations are confined to the bilingual guide and all expense ranges
       }
     }
     click(f.root.querySelector('[data-tab=manualTab]'));
-    assert.ok(f.root.textContent!.includes(w.expensesHelp));
-    assert.ok(f.root.textContent!.includes(w.periodRangeHelp));
-    assert.ok(f.root.textContent!.includes(w.subscriptionCatalogHelp));
+    const guide = () => f.root.querySelector('.tp-manual')!.textContent!;
+    assert.match(guide(), /текущие календарные периоды/);
+    assert.match(guide(), /фактические даты оплаты/);
+    assert.match(guide(), /отменённые подписки и записи без даты в прогноз не входят/);
     f.plugin.settings.language = 'en';
     f.view.rebuild();
-    const en = words('en');
-    assert.ok(f.root.textContent!.includes(en.periodRangeHelp));
-    assert.ok(f.root.textContent!.includes(en.expensesHelp));
+    assert.match(guide(), /current calendar period/);
+    assert.match(guide(), /actual payment dates/);
+    assert.match(guide(), /cancelled or undated subscriptions have no calendar forecast/);
   } finally {
     await f.close();
   }
@@ -2233,7 +2249,7 @@ test('UI twenty distant tasks appear on work dates and deadlines without disclos
     f.view.rebuild();
     const cell = () => f.root.querySelector(`[data-day="${due}"]`)!;
     assert.equal(cell().querySelectorAll('.tp-calendar-deadline').length, 20);
-    assert.ok(cell().lastElementChild!.classList.contains('tp-calendar-deadline'));
+    assert.ok(cell().querySelector('.tp-calendar-deadline.tp-lane-entry'));
     click(cell().querySelector('.tp-check'));
     await tick();
     click(f.root.querySelector('[data-calendar-hide-done]'));
@@ -2311,7 +2327,7 @@ test('UI calendar views expose day/week/month and the estimate remains distinct 
     await f.close();
   }
 });
-test('UI task forms omit extra-day controls and preserve saved work dates in both languages', async () => {
+test('UI task forms disclose work-day controls and preserve saved dates in both languages', async () => {
   for (const language of ['ru', 'en'] as const) {
     const f = await fixture();
     try {
@@ -2319,11 +2335,14 @@ test('UI task forms omit extra-day controls and preserve saved work dates in bot
       f.view.rebuild();
       const create = new TaskModal(f.plugin);
       create.open();
-      assert.equal(create.contentEl.querySelector('[data-field=workDate], .tp-work-dates'), null);
-      assert.ok(
-        !create.contentEl.textContent?.includes(
-          language === 'ru' ? 'Добавить день работы' : 'Add work day',
-        ),
+      assert.ok(create.contentEl.querySelector('.tp-work-dates'));
+      assert.equal(
+        create.contentEl.querySelector<HTMLDetailsElement>('[data-section=planning]')?.open,
+        false,
+      );
+      assert.equal(
+        create.contentEl.querySelector('.tp-work-date-add')?.getAttribute('aria-label'),
+        words(language).addWorkDate,
       );
       create.contentEl.querySelector<HTMLInputElement>('input[type=text]')!.value = 'Simple task';
       submit(create.contentEl.querySelector('form')!);
@@ -2354,7 +2373,11 @@ test('UI task forms omit extra-day controls and preserve saved work dates in bot
       const task = f.plugin.repo.snapshot().tasks.find((t) => t.path === file.path)!;
       const edit = new TaskModal(f.plugin, taskItem(task, day()));
       edit.open();
-      assert.equal(edit.contentEl.querySelector('[data-field=workDate], .tp-work-dates'), null);
+      assert.equal(edit.contentEl.querySelectorAll('.tp-work-date-list .tp-filter-chip').length, 2);
+      assert.equal(
+        edit.contentEl.querySelector<HTMLDetailsElement>('[data-section=planning]')?.open,
+        true,
+      );
       edit.contentEl.querySelector<HTMLInputElement>('input[type=text]')!.value = 'Edited plan';
       edit.contentEl.querySelector<HTMLInputElement>('[data-field=plannedMinutes]')!.value = '120';
       submit(edit.contentEl.querySelector('form')!);
@@ -2463,8 +2486,10 @@ test('UI calendar load uses hours and minutes alongside date and retains unknown
     const heading = f.root.querySelector<HTMLElement>(`[data-day="${day()}"] .tp-day-heading`)!;
     assert.ok(heading.querySelector('.tp-day-number'));
     assert.equal(heading.querySelector('.tp-day-duration')?.textContent, '1 ч 55 мин');
+    assert.equal(heading.querySelector('.tp-day-capacity')?.textContent, 'Доступно на день: 8 ч');
+    assert.equal(heading.querySelector('[role=meter]')?.getAttribute('aria-valuenow'), '115');
     const unknown = heading.querySelector<HTMLElement>('.tp-day-unestimated')!;
-    assert.match(unknown.textContent!, /^\?\d+$/);
+    assert.match(unknown.textContent!, /^Без оценки: \d+$/);
     assert.match(unknown.getAttribute('aria-label')!, /Без оценки/);
     assert.equal(heading.parentElement?.classList.contains('tp-day'), true);
   } finally {
@@ -2472,10 +2497,34 @@ test('UI calendar load uses hours and minutes alongside date and retains unknown
   }
 });
 
-test('UI menu toggle keeps drafts, language labels and Guide access without saving settings', async () => {
+test('calendar date jump rejects impossible dates, accepts leap day and never writes task notes', async () => {
   const f = await fixture();
   try {
-    const settings = JSON.stringify(f.plugin.settings);
+    let chosen = '';
+    new CalendarJumpModal(f.plugin, '2026-02-01', (value) => {
+      chosen = value;
+    }).open();
+    const form = document.querySelector<HTMLFormElement>('.tp-calendar-jump-form')!;
+    const date = form.querySelector<HTMLInputElement>('[data-jump-day]')!;
+    const year = form.querySelector<HTMLInputElement>('[data-jump-year]')!;
+    date.value = '29';
+    submit(form);
+    assert.equal(chosen, '');
+    assert.ok(date.validationMessage);
+    change(year, '2028');
+    submit(form);
+    assert.equal(chosen, '2028-02-29');
+    assert.equal(f.plugin.repo.snapshot().tasks.length, 0);
+  } finally {
+    await f.close();
+  }
+});
+
+test('UI menu toggle keeps drafts, language labels and Guide access while persisting only view preferences', async () => {
+  const f = await fixture();
+  try {
+    const { uiState: _state, ...otherSettings } = f.plugin.settings;
+    const settings = JSON.stringify(otherSettings);
     const toggle = () => f.root.querySelector<HTMLButtonElement>('[data-menu-toggle]')!;
     const title = f.root.querySelector<HTMLInputElement>('.tp-quick input[type=text]')!;
     title.value = 'Draft stays while toggling';
@@ -2513,7 +2562,10 @@ test('UI menu toggle keeps drafts, language labels and Guide access without savi
     assert.equal(toggle().closest('[hidden]'), null);
     assert.equal(f.root.querySelector<HTMLElement>('.tp-header-tools')!.hidden, true);
     assert.equal(f.root.querySelector<HTMLElement>('.tp-nav')!.hidden, true);
-    assert.equal(JSON.stringify(f.plugin.settings), settings);
+    const { uiState, ...remainingSettings } = f.plugin.settings;
+    assert.equal(JSON.stringify(remainingSettings), settings);
+    assert.equal(uiState?.sidebarCollapsed, true);
+    assert.equal(uiState?.tab, 'manualTab');
     f.plugin.settings.language = 'en';
     f.view.rebuild();
     assert.equal(toggle().getAttribute('aria-label'), words('en').expandMenu);
@@ -2987,8 +3039,8 @@ test('calendar failed filter is independent of completed and recurring filters a
       assert.ok(titles().includes('One failed'));
       click(f.root.querySelector('[data-calendar-hide-failed]'));
       assert.equal(
-        f.root.querySelector('[data-calendar-hide-failed]')?.getAttribute('aria-pressed'),
-        'true',
+        f.root.querySelector<HTMLInputElement>('[data-calendar-hide-failed]')?.checked,
+        false,
       );
       assert.ok(!titles().includes('One failed'));
       assert.ok(!titles().includes('Repeat failed'));
@@ -3010,7 +3062,10 @@ test('calendar failed filter is independent of completed and recurring filters a
     );
     f.plugin.settings.language = 'en';
     f.view.rebuild();
-    assert.equal(f.root.querySelector('[data-calendar-hide-failed]')?.textContent, 'Hide failed');
+    assert.equal(
+      f.root.querySelector('[data-calendar-hide-failed]')?.parentElement?.textContent,
+      'Failed',
+    );
   } finally {
     await f.close();
   }
@@ -3259,7 +3314,14 @@ test('programmatic selection updates presentation without running change handler
   try {
     const { select } = await import('../src/ui/dom');
     const { setSelectValue } = await import('../src/ui/selection');
-    const native = select(f.root, [['', 'Choose'], ['a', 'Alpha']], 'a');
+    const native = select(
+      f.root,
+      [
+        ['', 'Choose'],
+        ['a', 'Alpha'],
+      ],
+      'a',
+    );
     let changes = 0;
     native.addEventListener('change', () => changes++);
     setSelectValue(native, '');
@@ -3268,7 +3330,10 @@ test('programmatic selection updates presentation without running change handler
     click(native.parentElement!.querySelector('.tp-select-trigger'));
     native.disabled = true;
     await tick();
-    assert.equal(native.parentElement!.querySelector('.tp-select-trigger')?.getAttribute('aria-expanded'), 'false');
+    assert.equal(
+      native.parentElement!.querySelector('.tp-select-trigger')?.getAttribute('aria-expanded'),
+      'false',
+    );
   } finally {
     await f.close();
   }
@@ -3297,12 +3362,26 @@ test('choice panel height fitting is bounded and does not recurse through render
   const f = await fixture();
   try {
     const { select } = await import('../src/ui/dom');
-    const native = select(f.root, Array.from({ length: 40 }, (_, n) => [String(n), `Item ${n}`]), '39');
+    const native = select(
+      f.root,
+      Array.from({ length: 40 }, (_, n) => [String(n), `Item ${n}`]),
+      '39',
+    );
     const panel = native.parentElement!.querySelector<HTMLElement>('.tp-select-panel')!;
     let measurements = 0;
     panel.getBoundingClientRect = () => {
       measurements++;
-      return { width: 200, height: 10000, left: 0, right: 200, top: 0, bottom: 10000, x: 0, y: 0, toJSON() {} };
+      return {
+        width: 200,
+        height: 10000,
+        left: 0,
+        right: 200,
+        top: 0,
+        bottom: 10000,
+        x: 0,
+        y: 0,
+        toJSON() {},
+      };
     };
     click(native.parentElement!.querySelector('.tp-select-trigger'));
     assert.equal(panel.querySelectorAll('.tp-select-option').length, 1);
@@ -3394,7 +3473,10 @@ test('calendar discloses metadata via ellipsis and range marks have no completio
       `[data-day="${addDays(day(), 1)}"] .tp-calendar-continuation`,
     )!;
     assert.ok(mark);
-    assert.equal(mark.querySelector<HTMLElement>('.tp-continuation-title')?.dataset.scheduledTime, '14:30');
+    assert.equal(
+      mark.querySelector<HTMLElement>('.tp-continuation-title')?.dataset.scheduledTime,
+      '14:30',
+    );
     assert.match(mark.getAttribute('aria-label')!, /14:30/);
     assert.equal(mark.querySelector('[role=checkbox], .tp-check, .tp-task-actions'), null);
     const task = f.plugin.repo.snapshot().tasks.find((t) => t.title === 'Minimal range')!;
@@ -3421,23 +3503,63 @@ test('calendar discloses metadata via ellipsis and range marks have no completio
 test('calendar keeps assigned time beside the title in Minimal and Detailed views without duplicate metadata', async () => {
   const f = await fixture();
   try {
-    await f.plugin.service.createTask(draft({ title: 'Timed task', scheduledTime: '09:05', due: addDays(day(), 2) }));
+    await f.plugin.service.createTask(
+      draft({ title: 'Timed task', scheduledTime: '09:05', due: addDays(day(), 2) }),
+    );
     await f.plugin.service.createTask(draft({ title: 'Untimed task' }));
     const before = JSON.stringify(f.plugin.repo.snapshot());
     click(f.root.querySelector('[data-tab=calendar]'));
     for (const period of ['day', 'week', 'month']) {
       click(f.root.querySelector(`[data-calendar-view=${period}]`));
       for (const appearance of ['minimal', 'detailed']) {
-        click(f.root.querySelector(`[data-calendar-appearance=${appearance}]`));
+        setCalendarCheck(f.root, '[data-calendar-details]', appearance === 'detailed');
         for (const title of f.root.querySelectorAll<HTMLElement>('.tp-task-title')) {
           if (title.textContent === 'Timed task') {
             assert.equal(title.dataset.scheduledTime, '09:05');
             assert.match(title.getAttribute('aria-label')!, /09:05/);
-            assert.equal(title.closest('.tp-task')!.querySelector('.tp-task-meta .tp-appointment-time'), null);
+            assert.equal(
+              title.closest('.tp-task')!.querySelector('.tp-task-meta .tp-appointment-time'),
+              null,
+            );
           } else assert.equal(title.hasAttribute('data-scheduled-time'), false);
         }
       }
     }
+    assert.equal(JSON.stringify(f.plugin.repo.snapshot()), before);
+  } finally {
+    await f.close();
+  }
+});
+
+test('calendar display stays usable across period and details changes without note writes', async () => {
+  const f = await fixture();
+  try {
+    await f.plugin.service.createTask(draft({ title: 'Design spacing', due: addDays(day(), 3) }));
+    const before = JSON.stringify(f.plugin.repo.snapshot());
+    click(f.root.querySelector('[data-tab=calendar]'));
+    const panel = () => f.root.querySelector<HTMLElement>('.tp-calendar-display-panel')!;
+    assert.equal(panel().hidden, true);
+    click(f.root.querySelector('[data-calendar-display]'));
+    assert.equal(panel().hidden, false);
+    assert.equal(f.root.querySelector('[data-calendar-roomy]'), null);
+    for (const period of ['month', 'day', 'week', 'month']) {
+      click(f.root.querySelector(`[data-calendar-view=${period}]`));
+      for (const detailed of [true, false]) {
+        setCalendarCheck(f.root, '[data-calendar-details]', detailed);
+        const overview = () => f.root.querySelector<HTMLInputElement>('[data-calendar-overview]')!;
+        assert.equal(overview().disabled, false);
+        click(overview());
+        assert.equal(overview().checked, true);
+        assert.equal(panel().hidden, false);
+        click(overview());
+        assert.equal(overview().checked, false);
+      }
+    }
+    panel().dispatchEvent(
+      new f.dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    );
+    assert.equal(panel().hidden, true);
+    assert.equal(document.activeElement, f.root.querySelector('[data-calendar-display]'));
     assert.equal(JSON.stringify(f.plugin.repo.snapshot()), before);
   } finally {
     await f.close();
@@ -3471,6 +3593,98 @@ test('calendar continuations follow all statuses and Undo; disclosure uses verti
   }
 });
 
+test('optional month overview limits entries after filters, opens the complete day and preserves notes', async () => {
+  const f = await fixture();
+  try {
+    for (let i = 0; i < 7; i++)
+      await f.plugin.service.createTask(
+        draft({ title: `Overview ${i}`, scheduledTime: `0${i + 1}:00` }),
+      );
+    const completed = f.plugin.repo.snapshot().tasks.find((t) => t.title === 'Overview 0')!;
+    await f.plugin.service.status(taskItem(completed, day()), 'done');
+    await tick();
+    const before = JSON.stringify(f.plugin.repo.snapshot());
+    click(f.root.querySelector('[data-tab=calendar]'));
+    const cell = () => f.root.querySelector<HTMLElement>(`[data-day="${day()}"]`)!;
+    assert.equal(cell().querySelectorAll('.tp-task').length, 7);
+    assert.equal(cell().querySelector('.tp-overview-hidden'), null);
+    click(f.root.querySelector('[data-calendar-overview]'));
+    assert.equal(cell().querySelectorAll('.tp-task:not(.tp-overview-hidden)').length, 3);
+    assert.equal(cell().querySelectorAll('.tp-overview-hidden').length, 4);
+    assert.match(cell().querySelector('[data-calendar-more]')!.textContent!, /4/);
+    click(f.root.querySelector('[data-calendar-hide-done]'));
+    assert.equal(cell().querySelectorAll('.tp-overview-hidden').length, 3);
+    assert.equal(cell().querySelector('.tp-done'), null);
+    click(cell().querySelector('[data-calendar-more]'));
+    assert.equal(
+      f.root.querySelector('[data-calendar-view=day]')!.getAttribute('aria-pressed'),
+      'true',
+    );
+    assert.equal(cell().querySelectorAll('.tp-task').length, 6);
+    assert.equal(cell().querySelector('.tp-overview-hidden'), null);
+    assert.equal(
+      (f.root.querySelector('[data-calendar-overview]') as HTMLInputElement).disabled,
+      false,
+    );
+    click(f.root.querySelector('[data-calendar-view=month]'));
+    assert.equal(cell().querySelectorAll('.tp-overview-hidden').length, 3);
+    click(f.root.querySelector('[data-calendar-overview]'));
+    assert.equal(cell().querySelector('.tp-overview-hidden'), null);
+    assert.equal(JSON.stringify(f.plugin.repo.snapshot()), before);
+    for (const weekend of f.root.querySelectorAll<HTMLElement>('.tp-day-weekend'))
+      assert.ok([0, 6].includes(new Date(weekend.dataset.day + 'T00:00:00Z').getUTCDay()));
+  } finally {
+    await f.close();
+  }
+});
+
+test('month overview counts project deadlines, continuations, subscription payments and task deadlines together', async () => {
+  const f = await fixture();
+  try {
+    await f.plugin.service.createNote('project', 'Overview project', { due: day() });
+    for (const title of ['First task', 'Second task'])
+      await f.plugin.service.createTask(draft({ title }));
+    await f.plugin.service.createTask(
+      draft({ title: 'Continuation', scheduled: addDays(day(), -1), due: addDays(day(), 1) }),
+    );
+    await f.plugin.service.createTask(
+      draft({ title: 'Deadline', scheduled: addDays(day(), -1), due: day() }),
+    );
+    await f.plugin.service.saveSubscription({
+      title: 'Subscription',
+      description: '',
+      project: '',
+      amount: 12,
+      currency: 'USD',
+      billingPeriod: 'monthly',
+      scheduled: day(),
+      active: true,
+    });
+    await tick();
+    const before = JSON.stringify(f.plugin.repo.snapshot());
+    click(f.root.querySelector('[data-tab=calendar]'));
+    click(f.root.querySelector('[data-calendar-overview]'));
+    const cell = () => f.root.querySelector<HTMLElement>(`[data-day="${day()}"]`)!;
+    assert.equal(
+      cell().querySelectorAll(
+        '.tp-calendar-project:not(.tp-overview-hidden), .tp-task:not(.tp-overview-hidden), .tp-calendar-continuation:not(.tp-overview-hidden), .tp-calendar-payment:not(.tp-overview-hidden)',
+      ).length,
+      3,
+    );
+    assert.match(cell().querySelector('[data-calendar-more]')!.textContent!, /3/);
+    assert.ok(cell().querySelector('.tp-calendar-billing.tp-overview-hidden'));
+    click(cell().querySelector('[data-calendar-more]'));
+    assert.ok(cell().querySelector('.tp-calendar-project'));
+    assert.ok(cell().querySelector('.tp-calendar-continuation'));
+    assert.ok(cell().querySelector('.tp-calendar-deadline'));
+    assert.ok(cell().querySelector('.tp-calendar-payment'));
+    assert.equal(cell().querySelector('.tp-overview-hidden'), null);
+    assert.equal(JSON.stringify(f.plugin.repo.snapshot()), before);
+  } finally {
+    await f.close();
+  }
+});
+
 test('calendar appearance expands every task, survives navigation and never writes notes', async () => {
   const f = await fixture();
   try {
@@ -3481,13 +3695,10 @@ test('calendar appearance expands every task, survives navigation and never writ
     const before = await f.app.vault.read(f.plugin.service.file(task.path));
     assert.ok(menus().length > 0);
     assert.ok(menus().every((menu) => !menu.open));
-    click(f.root.querySelector('[data-calendar-appearance=detailed]'));
+    setCalendarCheck(f.root, '[data-calendar-details]', true);
     await tick();
     assert.ok(menus().every((menu) => menu.open));
-    assert.equal(
-      f.root.querySelector('[data-calendar-appearance=detailed]')?.getAttribute('aria-pressed'),
-      'true',
-    );
+    assert.equal(f.root.querySelector<HTMLInputElement>('[data-calendar-details]')?.checked, true);
     assert.ok(f.root.querySelector('.tp-calendar-detailed'));
     f.root
       .querySelector('.tp-header')!
@@ -3503,19 +3714,16 @@ test('calendar appearance expands every task, survives navigation and never writ
     click(f.root.querySelector('[data-tab=calendar]'));
     await tick();
     assert.ok(menus().every((menu) => menu.open));
-    click(f.root.querySelector('[data-calendar-appearance=minimal]'));
+    setCalendarCheck(f.root, '[data-calendar-details]', false);
     await tick();
     assert.ok(menus().every((menu) => !menu.open));
     assert.equal(await f.app.vault.read(f.plugin.service.file(task.path)), before);
     f.plugin.settings.language = 'en';
     f.view.rebuild();
+    assert.equal(f.root.querySelector<HTMLInputElement>('[data-calendar-details]')?.checked, false);
     assert.equal(
-      f.root.querySelector('[data-calendar-appearance=minimal]')?.textContent,
-      'Minimal view',
-    );
-    assert.equal(
-      f.root.querySelector('[data-calendar-appearance=detailed]')?.textContent,
-      'Detailed view',
+      f.root.querySelector('[data-calendar-details]')?.parentElement?.textContent,
+      'Task details',
     );
   } finally {
     await f.close();
@@ -3570,6 +3778,678 @@ test('built-in guide provides a localized color and icon legend with distinct de
         ),
       );
     }
+  } finally {
+    await f.close();
+  }
+});
+
+test('UI project and area deletion confirms, preserves linked notes and supports Undo', async () => {
+  const f = await fixture();
+  try {
+    const area = await f.plugin.service.createNote('area', 'Delete UI area', {});
+    const project = await f.plugin.service.createNote('project', 'Delete UI project', {
+      area: area.path,
+    });
+    await f.plugin.service.createTask(
+      draft({ title: 'Preserved linked task', project: project.path }),
+    );
+    const task = f.plugin.repo.snapshot().tasks[0]!;
+    const beforeTask = await f.app.vault.read(f.app.vault.getAbstractFileByPath(task.path));
+    const beforeProject = await f.app.vault.read(f.app.vault.getAbstractFileByPath(project.path));
+    click(f.root.querySelector('[data-tab=projects]'));
+    change(f.root.querySelectorAll<HTMLSelectElement>('.tp-filter-panel select')[1]!, project.path);
+    click(f.root.querySelector('.tp-delete-project'));
+    byText(document.querySelector('.tp-modal')!, 'Отмена').click();
+    assert.equal(f.plugin.repo.snapshot().projects.length, 1);
+    click(f.root.querySelector('.tp-delete-project'));
+    byText(document.querySelector('.tp-modal')!, 'Удалить').click();
+    await tick();
+    assert.equal(f.plugin.repo.snapshot().projects.length, 0);
+    assert.equal(await f.app.vault.read(f.app.vault.getAbstractFileByPath(task.path)), beforeTask);
+    await f.plugin.service.undo();
+    await tick();
+    assert.equal(
+      await f.app.vault.read(f.app.vault.getAbstractFileByPath(project.path)),
+      beforeProject,
+    );
+    click(f.root.querySelector('.tp-delete-area'));
+    byText(document.querySelector('.tp-modal')!, 'Удалить').click();
+    await tick();
+    assert.equal(f.plugin.repo.snapshot().areas.length, 0);
+    assert.equal(f.plugin.repo.snapshot().projects.length, 1);
+    assert.equal(
+      await f.app.vault.read(f.app.vault.getAbstractFileByPath(project.path)),
+      beforeProject,
+    );
+    assert.equal(await f.app.vault.read(f.app.vault.getAbstractFileByPath(task.path)), beforeTask);
+    await f.plugin.service.undo();
+    await tick();
+    assert.equal(f.plugin.repo.snapshot().areas.length, 1);
+  } finally {
+    await f.close();
+  }
+});
+
+test('UI failing overdue work removes it from Today but keeps it in calendar and Undo reopens it', async () => {
+  const f = await fixture();
+  try {
+    await f.plugin.service.createTask(
+      draft({ scheduled: addDays(day(), -1), due: addDays(day(), -1) }),
+    );
+    const task = f.plugin.repo.snapshot().tasks[0]!;
+    click(f.root.querySelector('.tp-fail-button'));
+    await tick();
+    assert.equal(f.root.querySelector('.tp-task'), null);
+    assert.equal(f.plugin.repo.snapshot().tasks[0]!.status, 'failed');
+    click(f.root.querySelector('[data-tab=calendar]'));
+    assert.ok(f.root.querySelector(`[data-path="${task.path}"].tp-failed`));
+    await f.plugin.service.undo();
+    await tick();
+    click(f.root.querySelector('[data-tab=today]'));
+    assert.ok(f.root.querySelector('.tp-overdue'));
+  } finally {
+    await f.close();
+  }
+});
+
+test('same-day task starts and ends in one card in every calendar view and detail mode', async () => {
+  const f = await fixture();
+  try {
+    await f.plugin.service.createTask(draft({ title: 'Same-day deadline', due: day() }));
+    click(f.root.querySelector('[data-tab=calendar]'));
+    for (const mode of ['day', 'week', 'month']) {
+      click(f.root.querySelector(`[data-calendar-view=${mode}]`));
+      for (const detailed of [false, true]) {
+        setCalendarCheck(f.root, '[data-calendar-details]', detailed);
+        const rows = f.root.querySelectorAll('.tp-task');
+        assert.equal(rows.length, 1);
+        assert.ok(rows[0]!.classList.contains('tp-calendar-starts'));
+        assert.ok(rows[0]!.classList.contains('tp-calendar-ends'));
+      }
+    }
+  } finally {
+    await f.close();
+  }
+});
+
+test('calendar load details open on request and close on Escape or scroll without note writes', async () => {
+  const f = await fixture();
+  let second: PlannerView | undefined;
+  try {
+    await f.plugin.service.createTask(draft({ plannedMinutes: 125 }));
+    const before = JSON.stringify(f.plugin.repo.snapshot());
+    click(f.root.querySelector('[data-tab=calendar]'));
+    const toggle = f.root.querySelector<HTMLButtonElement>('.tp-day-duration')!;
+    const popup = f.root.querySelector<HTMLElement>('.tp-day-load-popup')!;
+    assert.equal(toggle.textContent, '2 ч 5 мин');
+    assert.equal(popup.hidden, true);
+    click(toggle);
+    assert.equal(popup.hidden, false);
+    assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+    popup.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(popup.hidden, true);
+    assert.equal(document.activeElement, toggle);
+    click(toggle);
+    f.root.dispatchEvent(new window.Event('scroll'));
+    assert.equal(popup.hidden, true);
+    second = new PlannerView({ app: f.app } as any, f.plugin);
+    await second.onOpen();
+    click(second.contentEl.querySelector('[data-tab=calendar]'));
+    click(toggle);
+    assert.equal(popup.hidden, false);
+    second.contentEl
+      .querySelector('.tp-day-duration')!
+      .dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+    assert.equal(
+      popup.hidden,
+      true,
+      'Interacting with another planner view closes the first popup',
+    );
+    assert.equal(JSON.stringify(f.plugin.repo.snapshot()), before);
+    assert.equal(
+      f.root.querySelector('.tp-day-today .tp-day-number')!.getAttribute('aria-current'),
+      'date',
+    );
+  } finally {
+    await second?.onClose();
+    await f.close();
+  }
+});
+
+test('Contact type saves as ordinary work and has a translated marker on every task surface', async () => {
+  const f = await fixture();
+  try {
+    for (const language of ['ru', 'en'] as const) {
+      f.plugin.settings.language = language;
+      f.view.navigate('today');
+      const modal = new TaskModal(f.plugin, undefined, {
+        title: `Contact ${language}`,
+        scheduled: day(),
+      });
+      modal.open();
+      const kind = [...modal.contentEl.querySelectorAll('select')].find((s) =>
+        [...s.options].some((o) => o.value === 'contact'),
+      )!;
+      change(kind, 'contact');
+      submit(modal.contentEl.querySelector('form')!);
+      await tick();
+      const task = f.plugin.repo.snapshot().tasks.find((t) => t.title === `Contact ${language}`)!;
+      assert.equal(task.kind, 'contact');
+      assert.match(await f.app.vault.read(f.plugin.service.file(task.path)), /taskType: contact/);
+      for (const tab of ['today', 'calendar', 'kanban'] as const) {
+        f.view.navigate(tab);
+        const badge = [...f.root.querySelectorAll<HTMLElement>('[data-kind=contact]')].find(
+          (b) => b.closest<HTMLElement>('[data-path]')?.dataset.path === task.path,
+        )!;
+        assert.ok(badge);
+        assert.equal(badge.getAttribute('aria-label'), words(language).contact);
+        assert.ok(badge.querySelector('svg'));
+      }
+    }
+  } finally {
+    await f.close();
+  }
+});
+
+test('view preferences restore safely while calendar dates follow today and notes remain untouched', async () => {
+  const f = await fixture();
+  try {
+    await f.plugin.service.createTask(draft());
+    const before = await f.app.vault.read(
+      f.plugin.service.file(f.plugin.repo.snapshot().tasks[0]!.path),
+    );
+    f.view.navigate('calendar');
+    click(f.root.querySelector('[data-calendar-view=week]'));
+    click(f.root.querySelector('[data-calendar-hide-failed]'));
+    const state = f.view.getState();
+    const restored = new PlannerView({ app: f.app } as any, f.plugin);
+    await restored.setState({ ...state, calendarFocus: '1900-01-01' });
+    await restored.onOpen();
+    assert.equal(restored.getState().calendarView, 'week');
+    assert.equal(restored.getState().hideCalendarFailed, true);
+    assert.ok(restored.contentEl.querySelector(`[data-day="${day()}"]`));
+    assert.equal(
+      await f.app.vault.read(f.plugin.service.file(f.plugin.repo.snapshot().tasks[0]!.path)),
+      before,
+    );
+    await restored.setState({
+      tab: '<script>',
+      calendarView: 'bad',
+      query: 100,
+      sidebarCollapsed: 'yes',
+    });
+    assert.equal(restored.getState().tab, 'today');
+    assert.equal(restored.getState().query, '');
+    await restored.onClose();
+  } finally {
+    await f.close();
+  }
+});
+
+test('active search has a removable chip and a contextual empty state without losing quick input', async () => {
+  const f = await fixture();
+  try {
+    assert.match(f.root.querySelector('.tp-empty')!.textContent!, /На сегодня/);
+    const title = f.root.querySelector<HTMLInputElement>('.tp-quick > input')!;
+    title.value = 'Unsaved quick text';
+    const search = f.root.querySelector<HTMLInputElement>('.tp-filters input')!;
+    search.value = 'No result';
+    search.dispatchEvent(new window.Event('input', { bubbles: true }));
+    assert.equal(f.root.querySelectorAll('.tp-filter-chip').length, 1);
+    assert.match(f.root.querySelector('.tp-empty')!.textContent!, /Ничего не найдено/);
+    click(f.root.querySelector('.tp-filter-chip'));
+    assert.equal(f.root.querySelector<HTMLInputElement>('.tp-filters input')!.value, '');
+    assert.equal(
+      f.root.querySelector<HTMLInputElement>('.tp-quick > input')!.value,
+      'Unsaved quick text',
+    );
+  } finally {
+    await f.close();
+  }
+});
+
+test('full task draft restores description, work dates and schedule, then clears only after success', async () => {
+  const f = await fixture();
+  try {
+    const first = new TaskModal(f.plugin);
+    first.open();
+    const form = first.contentEl.querySelector('form')!;
+    const title = first.contentEl.querySelector<HTMLInputElement>('input[type=text]')!;
+    title.value = 'Draft contact';
+    title.dispatchEvent(new window.Event('input', { bubbles: true }));
+    const description = first.contentEl.querySelector('textarea')!;
+    description.value = 'Keep this text';
+    description.dispatchEvent(new window.Event('input', { bubbles: true }));
+    const kind = [...first.contentEl.querySelectorAll('select')].find((s) =>
+      [...s.options].some((o) => o.value === 'contact'),
+    )!;
+    change(kind, 'contact');
+    const work = first.contentEl.querySelector<HTMLInputElement>('[data-field=workDates]')!;
+    work.value = JSON.stringify([addDays(day(), 1)]);
+    work.dispatchEvent(new window.Event('change', { bubbles: true }));
+    first.close();
+    await f.plugin.saveSettings();
+    assert.equal(f.plugin.repo.snapshot().tasks.length, 0);
+    const next = new TaskModal(f.plugin);
+    next.open();
+    assert.equal(
+      next.contentEl.querySelector<HTMLInputElement>('input[type=text]')!.value,
+      'Draft contact',
+    );
+    assert.equal(next.contentEl.querySelector('textarea')!.value, 'Keep this text');
+    assert.equal(next.contentEl.querySelectorAll('.tp-work-date-list .tp-filter-chip').length, 1);
+    assert.equal(
+      next.contentEl.querySelector<HTMLDetailsElement>('[data-section=description]')!.open,
+      true,
+    );
+    submit(next.contentEl.querySelector('form')!);
+    await tick();
+    assert.equal(f.plugin.repo.snapshot().tasks[0]?.kind, 'contact');
+    assert.deepEqual(f.plugin.repo.snapshot().tasks[0]?.workDates, [addDays(day(), 1)]);
+    assert.deepEqual(f.plugin.settings.formDrafts, {});
+    assert.ok(form); // The closed form was never written to the vault.
+  } finally {
+    await f.close();
+  }
+});
+
+test('work-day editor adds, rejects duplicate and late days, removes dates and preserves exact estimates', async () => {
+  const f = await fixture();
+  try {
+    const modal = new TaskModal(f.plugin, undefined, {
+      title: 'Work schedule',
+      scheduled: day(),
+      due: addDays(day(), 3),
+      plannedMinutes: 91,
+    });
+    modal.open();
+    const root = modal.contentEl;
+    const pick = root.querySelector<HTMLInputElement>('.tp-work-dates .tp-date')!;
+    const add = root.querySelector('.tp-work-date-add')!;
+    pick.value = formatDate(addDays(day(), 1));
+    click(add);
+    pick.value = formatDate(addDays(day(), 2));
+    click(add);
+    assert.equal(root.querySelectorAll('.tp-work-date-list .tp-filter-chip').length, 2);
+    assert.match(root.querySelector('.tp-work-distribution')!.textContent!, /31.*30.*30/);
+    pick.value = formatDate(addDays(day(), 1));
+    click(add);
+    assert.equal(root.querySelector<HTMLElement>('.tp-field-error')!.hidden, false);
+    pick.value = formatDate(addDays(day(), 4));
+    click(add);
+    assert.equal(root.querySelectorAll('.tp-work-date-list .tp-filter-chip').length, 2);
+    click(root.querySelector('.tp-work-date-list .tp-filter-chip'));
+    submit(root.querySelector('form')!);
+    await tick();
+    assert.deepEqual(f.plugin.repo.snapshot().tasks[0]?.workDates, [addDays(day(), 2)]);
+    assert.equal(f.plugin.repo.snapshot().tasks[0]?.plannedMinutes, 91);
+  } finally {
+    await f.close();
+  }
+});
+
+test('visual repeat builder saves two-week weekdays and COUNT with an inclusive cutoff', async () => {
+  const f = await fixture();
+  try {
+    const modal = new TaskModal(f.plugin, undefined, {
+      title: 'Contact weekly',
+      kind: 'contact',
+      scheduled: '2026-10-05',
+    });
+    modal.open();
+    const root = modal.contentEl;
+    const repeat = [...root.querySelectorAll('select')].find((s) =>
+      [...s.options].some((o) => o.value === 'builder'),
+    )!;
+    change(repeat, 'builder');
+    change(root.querySelector<HTMLInputElement>('[data-field=repeatInterval]')!, '2');
+    click(root.querySelector('.tp-repeat-days input[value=MO]'));
+    click(root.querySelector('.tp-repeat-days input[value=TH]'));
+    change(root.querySelector<HTMLInputElement>('[data-field=repeatCount]')!, '4');
+    change(root.querySelector<HTMLInputElement>('.tp-repeat-until')!, formatDate('2026-11-30'));
+    assert.match(root.querySelector('.tp-repeat-preview')!.textContent!, /05.10.2026/);
+    assert.equal(root.querySelector<HTMLElement>('.tp-work-dates')!.hidden, true);
+    submit(root.querySelector('form')!);
+    await tick();
+    const task = f.plugin.repo.snapshot().tasks[0]!;
+    assert.equal(
+      task.recurrence,
+      'FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,TH;COUNT=4;UNTIL=20261130T235959Z',
+    );
+    assert.deepEqual(
+      expand(task, '2026-10-01', '2026-11-30').map((i) => i.date),
+      ['2026-10-05', '2026-10-08', '2026-10-19', '2026-10-22'],
+    );
+    const edit = new TaskModal(f.plugin, taskItem(task, '2026-10-05'));
+    edit.open();
+    submit(edit.contentEl.querySelector('form')!);
+    await tick();
+    assert.equal(f.plugin.repo.snapshot().tasks[0]!.recurrence, task.recurrence);
+  } finally {
+    await f.close();
+  }
+});
+
+test('saving failures keep fields and show an inline error, then allow retry', async () => {
+  const f = await fixture();
+  try {
+    const modal = new TaskModal(f.plugin, undefined, { title: 'Retry me' });
+    modal.open();
+    const planned = modal.contentEl.querySelector<HTMLInputElement>('[data-field=plannedMinutes]')!;
+    planned.value = '-1';
+    submit(modal.contentEl.querySelector('form')!);
+    await tick();
+    assert.ok(modal.contentEl.isConnected);
+    assert.equal(
+      modal.contentEl.querySelector<HTMLInputElement>('input[type=text]')!.value,
+      'Retry me',
+    );
+    assert.match(
+      modal.contentEl.querySelector('[role=alert]')!.textContent!,
+      /Не удалось сохранить/,
+    );
+    assert.equal(f.plugin.repo.snapshot().tasks.length, 0);
+    planned.value = '30';
+    submit(modal.contentEl.querySelector('form')!);
+    await tick();
+    assert.equal(f.plugin.repo.snapshot().tasks[0]?.plannedMinutes, 30);
+  } finally {
+    await f.close();
+  }
+});
+
+test('stale task form refuses to overwrite an external edit and keeps a recoverable draft', async () => {
+  const f = await fixture();
+  try {
+    const file = await f.plugin.service.createTask(draft({ title: 'Original title' }));
+    const task = f.plugin.repo.snapshot().tasks.find((t) => t.path === file.path)!;
+    const modal = new TaskModal(f.plugin, taskItem(task, day()));
+    modal.open();
+    modal.contentEl.querySelector<HTMLInputElement>('input[type=text]')!.value = 'My edited title';
+    await f.app.fileManager.processFrontMatter(file, (fm: any) => {
+      fm.title = 'External title';
+    });
+    await f.plugin.repo.refresh(file);
+    submit(modal.contentEl.querySelector('form')!);
+    await tick();
+    assert.equal(
+      f.plugin.repo.snapshot().tasks.find((t) => t.path === file.path)!.title,
+      'External title',
+    );
+    assert.equal(
+      modal.contentEl.querySelector<HTMLInputElement>('input[type=text]')!.value,
+      'My edited title',
+    );
+    assert.match(modal.contentEl.querySelector('[role=alert]')!.textContent!, /изменена вне формы/);
+    modal.close();
+    const reopened = new TaskModal(
+      f.plugin,
+      taskItem(
+        f.plugin.repo.snapshot().tasks.find((t) => t.path === file.path)!,
+        day(),
+      ),
+    );
+    reopened.open();
+    assert.equal(
+      reopened.contentEl.querySelector<HTMLInputElement>('input[type=text]')!.value,
+      'External title',
+    );
+    assert.match(
+      reopened.contentEl.querySelector('.tp-draft-banner')!.textContent!,
+      /Заметка изменилась/,
+    );
+    byText(reopened.contentEl, words('ru').restoreDraft).click();
+    assert.equal(
+      reopened.contentEl.querySelector<HTMLInputElement>('input[type=text]')!.value,
+      'My edited title',
+    );
+    submit(reopened.contentEl.querySelector('form')!);
+    await tick();
+    assert.equal(
+      f.plugin.repo.snapshot().tasks.find((t) => t.path === file.path)!.title,
+      'My edited title',
+    );
+  } finally {
+    await f.close();
+  }
+});
+
+test('draft restores repeat end, selected weekdays and exact invalid interval text', async () => {
+  const f = await fixture();
+  try {
+    const first = new TaskModal(f.plugin, undefined, { title: 'Repeat draft' });
+    first.open();
+    const repeat = [...first.contentEl.querySelectorAll('select')].find((s) =>
+      [...s.options].some((o) => o.value === 'builder'),
+    )!;
+    change(repeat, 'builder');
+    change(
+      first.contentEl.querySelector<HTMLInputElement>('.tp-repeat-until')!,
+      formatDate(addDays(day(), 40)),
+    );
+    change(first.contentEl.querySelector<HTMLInputElement>('[data-field=repeatInterval]')!, '0');
+    click(first.contentEl.querySelector('.tp-repeat-days input[value=TH]'));
+    first.close();
+    const next = new TaskModal(f.plugin);
+    next.open();
+    assert.equal(
+      next.contentEl.querySelector<HTMLInputElement>('.tp-repeat-until')!.value,
+      formatDate(addDays(day(), 40)),
+    );
+    assert.equal(
+      next.contentEl.querySelector<HTMLInputElement>('[data-field=repeatInterval]')!.value,
+      '0',
+    );
+    assert.equal(
+      next.contentEl.querySelector<HTMLInputElement>('.tp-repeat-days input[value=TH]')!.checked,
+      true,
+    );
+    next.close();
+  } finally {
+    await f.close();
+  }
+});
+
+test('clearing an automatically restored draft does not bring back the old input on reopening', async () => {
+  const f = await fixture();
+  try {
+    const first = new TaskModal(f.plugin);
+    first.open();
+    first.contentEl.querySelector<HTMLInputElement>('input[type=text]')!.value = 'Temporary title';
+    first.close();
+    const next = new TaskModal(f.plugin);
+    next.open();
+    next.contentEl.querySelector<HTMLInputElement>('input[type=text]')!.value = '';
+    next.close();
+    const third = new TaskModal(f.plugin);
+    third.open();
+    assert.equal(third.contentEl.querySelector<HTMLInputElement>('input[type=text]')!.value, '');
+    assert.equal(third.contentEl.querySelector<HTMLElement>('.tp-draft-banner')!.hidden, true);
+    third.close();
+  } finally {
+    await f.close();
+  }
+});
+
+test('UI result shares the notes disclosure and saves literal multiline text', async () => {
+  const f = await fixture();
+  try {
+    const modal = new TaskModal(f.plugin);
+    modal.open();
+    modal.contentEl.querySelector<HTMLInputElement>('input[type=text]')!.value = 'Investigation';
+    modal.contentEl.querySelector<HTMLTextAreaElement>('textarea.tp-description')!.value =
+      'Initial context';
+    const result = modal.contentEl.querySelector<HTMLTextAreaElement>('textarea.tp-result')!;
+    assert.ok(result.closest('[data-section=description]'));
+    result.value = 'Completed\n<img src=x onerror=alert(1)>';
+    submit(modal.contentEl.querySelector('form')!);
+    await tick();
+    const task = f.plugin.repo.snapshot().tasks[0]!;
+    assert.equal(task.result, result.value);
+    const edit = new TaskModal(f.plugin, taskItem(task, day()));
+    edit.open();
+    assert.equal(
+      edit.contentEl.querySelector<HTMLTextAreaElement>('.tp-result')!.value,
+      task.result,
+    );
+    assert.equal(
+      edit.contentEl.querySelector<HTMLDetailsElement>('[data-section=description]')!.open,
+      true,
+    );
+    assert.equal(edit.contentEl.querySelector('img'), null);
+    edit.close();
+  } finally {
+    await f.close();
+  }
+});
+
+test('UI month highlights exactly the visible dates of the current Monday-based week', async () => {
+  const f = await fixture();
+  try {
+    click(f.root.querySelector('[data-tab=calendar]'));
+    const week = calendarPeriod(day(), 7);
+    const highlighted = [...f.root.querySelectorAll<HTMLElement>('.tp-current-week')].map(
+      (cell) => cell.dataset.day!,
+    );
+    assert.deepEqual(
+      highlighted,
+      periodDates(week.from, 7).filter((date) => f.root.querySelector(`[data-day="${date}"]`)),
+    );
+    assert.equal(highlighted.length, 7);
+    assert.ok(f.root.querySelector('.tp-day-today.tp-current-week'));
+  } finally {
+    await f.close();
+  }
+});
+
+test('search cache reuses text and invalidates after task and project edits', async () => {
+  const f = await fixture();
+  try {
+    const file = await f.plugin.service.createTask(
+      draft({ title: 'Alpha', result: 'Recorded outcome' }),
+    );
+    const view = f.view as any;
+    view.query = 'recorded';
+    assert.equal(view.filtered().length, 1);
+    const task = f.plugin.repo.snapshot().tasks[0]!;
+    let ledgerReads = 0;
+    const ledger = task.occurrences;
+    Object.defineProperty(task, 'occurrences', {
+      configurable: true,
+      get: () => {
+        ledgerReads++;
+        return ledger;
+      },
+    });
+    view.query = 'outcome';
+    assert.equal(view.filtered().length, 1);
+    assert.equal(ledgerReads, 0, 'typing another query must reuse the indexed text');
+    await f.plugin.service.patch(file.path, (fm) => {
+      fm.result = 'Revised conclusion';
+    });
+    view.query = 'recorded';
+    assert.equal(view.filtered().length, 0);
+    view.query = 'revised';
+    assert.equal(view.filtered().length, 1);
+    await f.plugin.service.patch(file.path, (fm) => {
+      fm.topOccurrences = { [day()]: { status: 'done', result: 'Historical evidence' } };
+    });
+    view.query = 'historical';
+    assert.equal(view.filtered().length, 1);
+    const project = await f.plugin.service.createNote('project', 'Original project', {
+      title: 'Original project',
+      status: 'active',
+    });
+    await f.plugin.service.patch(file.path, (fm) => {
+      fm.project = `[[${project.path}]]`;
+    });
+    view.query = 'original project';
+    assert.equal(view.filtered().length, 1);
+    await f.plugin.service.patch(project.path, (fm) => {
+      fm.title = 'Renamed project';
+    });
+    assert.equal(view.filtered().length, 0);
+    view.query = 'renamed project';
+    assert.equal(view.filtered().length, 1);
+    view.query = '';
+    assert.equal(view.filtered().length, 1);
+  } finally {
+    await f.close();
+  }
+});
+
+test('batched workload totals preserve unique unknown tasks and independent moved repeats', async () => {
+  const f = await fixture();
+  try {
+    const { calendarItems, dayLoads, workDays } = await import('../src/core/calendar');
+    const { isActive } = await import('../src/core/model');
+    const dates = ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04'];
+    const tasks = [
+      normalizeTask('multi.md', {
+        scheduled: dates[0],
+        workDates: [dates[1], dates[2]],
+        due: dates[3],
+      }),
+      normalizeTask('deadline.md', { due: dates[1] }),
+      normalizeTask('repeat.md', {
+        scheduled: dates[0],
+        recurrence: 'FREQ=DAILY;COUNT=4',
+        topMoves: { [dates[0]!]: dates[1] },
+        topOccurrences: { [dates[2]!]: { status: 'done' } },
+      }),
+      normalizeTask('estimated.md', {
+        scheduled: dates[0],
+        workDates: [dates[1]],
+        plannedMinutes: 101,
+      }),
+      normalizeTask('closed.md', { scheduled: dates[0], status: 'done' }),
+      normalizeTask('payment.md', { scheduled: dates[0], taskType: 'payment' }),
+    ];
+    for (const selected of [dates, dates.slice(1, 3), [dates[1]!], []]) {
+      const unknown = new Set<string>();
+      for (const task of tasks) {
+        if (task.plannedMinutes || task.kind === 'payment' || task.kind === 'subscription')
+          continue;
+        for (const item of calendarItems(task, selected[0] || '', selected.at(-1) || ''))
+          if (isActive(item.status) && (item.calendarRole === 'work' || !workDays(task).length))
+            unknown.add(task.path + '\0' + (item.recurring ? item.key : ''));
+      }
+      (f.view as any).main.replaceChildren();
+      const loads = dayLoads(tasks, dates, 480);
+      (f.view as any).workloadPanel(tasks, selected, loads);
+      const panel = f.root.querySelector<HTMLElement>('.tp-workload-panel')!;
+      assert.equal(Number(panel.dataset.unestimatedTasks), unknown.size);
+      assert.equal(
+        Number(panel.dataset.plannedMinutes),
+        selected.reduce((n, date) => n + loads.get(date)!.minutes, 0),
+      );
+    }
+  } finally {
+    await f.close();
+  }
+});
+
+test('select search announces active options and removes options hidden while open', async () => {
+  const f = await fixture();
+  try {
+    const { select } = await import('../src/ui/dom');
+    const native = select(
+      f.root,
+      Array.from({ length: 20 }, (_, i) => [String(i), `Choice ${i}`]),
+      '0',
+    );
+    const wrapper = native.parentElement!;
+    click(wrapper.querySelector('.tp-select-trigger'));
+    const search = wrapper.querySelector<HTMLInputElement>('.tp-select-search')!;
+    search.value = 'Choice 19';
+    search.dispatchEvent(new window.Event('input', { bubbles: true }));
+    const option = wrapper.querySelector<HTMLElement>('.tp-select-option')!;
+    assert.equal(search.getAttribute('aria-activedescendant'), option.id);
+    assert.equal(option.getAttribute('aria-setsize'), '1');
+    native.options[19]!.hidden = true;
+    await tick();
+    assert.equal(wrapper.querySelectorAll('.tp-select-option').length, 0);
+    assert.equal(search.getAttribute('aria-activedescendant'), null);
   } finally {
     await f.close();
   }

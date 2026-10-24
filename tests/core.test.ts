@@ -14,7 +14,11 @@ const task = (fm: Record<string, unknown> = {}) =>
   });
 const routine = (fm: Record<string, unknown> = {}) => task({ recurrence: 'FREQ=DAILY', ...fm });
 test('malformed YAML collections do not stringify into titles or dates and recurrence stays flagged', () => {
-  const malformed = { toString() { throw new Error('Must not stringify a YAML collection'); } };
+  const malformed = {
+    toString() {
+      throw new Error('Must not stringify a YAML collection');
+    },
+  };
   assert.equal(dateKey(malformed), '');
   const record = task({ title: malformed, taskType: malformed, recurrence: malformed });
   assert.equal(record.title, 'Example');
@@ -215,14 +219,15 @@ test('overdue task resolved today remains visible for reopening', () => {
   assert.equal(items.today.length, 1);
   assert.equal(items.today[0]?.status, 'done');
 });
-test('overdue recurring day resolved today stays visible alongside current day', () => {
+test('failing an overdue recurring day does not pull it into today', () => {
   const t = routine({
     scheduled: '2026-10-01',
     topOccurrences: { '2026-10-01': { status: 'failed', resolvedOn: '2026-10-02' } },
   });
   const items = todayItems([t], '2026-10-02');
   assert.equal(items.overdue.length, 0);
-  assert.equal(items.today.length, 2);
+  assert.equal(items.today.length, 1);
+  assert.equal(items.today[0]?.key, '2026-10-02');
 });
 test('changing repeat anchor keeps explicitly recorded previous history', () => {
   const t = routine({
@@ -391,4 +396,47 @@ test('compact typed appointment time normalizes only valid 24-hour values', () =
   assert.equal(timeKey('2400'), '');
   assert.equal(timeKey('1260'), '');
   assert.equal(timeKey('90000'), '');
+});
+
+test('Today keeps failed old work closed while retaining current failures and completed history', () => {
+  const today = '2026-10-02';
+  const tasks = [
+    task({
+      title: 'Old failure closed now',
+      scheduled: '2026-09-30',
+      due: '2026-09-30',
+      status: 'failed',
+      failedDate: today,
+    }),
+    task({
+      title: 'Old failure missing resolution',
+      scheduled: '2026-09-30',
+      due: today,
+      status: 'failed',
+    }),
+    task({
+      title: 'Old closure with current planned date',
+      scheduled: today,
+      status: 'failed',
+      failedDate: '2026-10-01',
+    }),
+    task({ title: 'Current failure', scheduled: today, status: 'failed', failedDate: today }),
+    task({
+      title: 'Late completion',
+      scheduled: '2026-09-30',
+      status: 'done',
+      completedDate: today,
+    }),
+  ];
+  assert.deepEqual(
+    todayItems(tasks, today)
+      .today.map((i) => i.task.title)
+      .sort(),
+    ['Current failure', 'Late completion'],
+  );
+  assert.equal(todayItems(tasks, today).overdue.length, 0);
+  assert.deepEqual(
+    todayItems(tasks, today, { today: 1, overdue: 1 }).today,
+    todayItems(tasks, today).today.slice(0, 1),
+  );
 });

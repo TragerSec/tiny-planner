@@ -41,6 +41,7 @@ export function normalizeTask(path: string, fm: FM): Task {
       if (dateKey(k) === k && v && typeof v === 'object' && !Array.isArray(v)) {
         const r = v as Record<string, unknown>;
         occurrences[k] = {
+          ...(typeof r.result === 'string' ? { result: r.result } : {}),
           status: normalizeStatus(r.status),
           minutes: safeMinutes(r.minutes),
           resolvedAt: r.resolvedAt ? scalarText(r.resolvedAt) : undefined,
@@ -68,11 +69,12 @@ export function normalizeTask(path: string, fm: FM): Task {
   }
   const payment =
     fm.topPayment && typeof fm.topPayment === 'object' ? (fm.topPayment as FM) : undefined;
-  const kinds: Kind[] = ['task', 'meeting', 'payment', 'status', 'subscription'];
+  const kinds: Kind[] = ['task', 'meeting', 'contact', 'payment', 'status', 'subscription'];
   return {
     path,
     title: title(fm, path),
     description: typeof fm.description === 'string' ? fm.description : '',
+    result: typeof fm.result === 'string' ? fm.result : '',
     status,
     kind: kinds.includes(kind) ? kind : 'task',
     project: link(fm.project ?? fm.projects),
